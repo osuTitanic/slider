@@ -182,6 +182,8 @@ def test_hit_objects_stacking():
         approach_rate=5,
         slider_multiplier=1,
         slider_tick_rate=1,
+        background="",
+        videos=[],
         timing_points=[],
         hit_objects=hit_objects,
     )
