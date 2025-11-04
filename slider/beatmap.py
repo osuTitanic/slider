@@ -1008,6 +1008,10 @@ class HoldNote(HitObject):
         except ValueError:
             raise ValueError("missing end_time")
 
+        if ":" in end_time:
+            # Some maps seem to have extra data, e.g. "15495:0:0:0:0:"
+            end_time, *_ = end_time.split(":")
+
         try:
             end_time = timedelta(milliseconds=int(end_time))
         except ValueError:
