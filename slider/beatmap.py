@@ -2553,6 +2553,10 @@ class Beatmap:
         data = data.lstrip()
         lines = iter(data.splitlines())
         line = next(lines)
+
+        # Remove BOM if present
+        line = line.removeprefix('\ufeff')
+
         match = cls._version_regex.match(line)
         if match is None:
             raise ValueError(f"missing osu file format specifier in: {line!r}")
