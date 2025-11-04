@@ -1772,6 +1772,8 @@ class Beatmap:
         approach_rate,
         slider_multiplier,
         slider_tick_rate,
+        background,
+        videos,
         timing_points,
         hit_objects,
     ):
@@ -1806,6 +1808,8 @@ class Beatmap:
         self.approach_rate = approach_rate
         self.slider_multiplier = slider_multiplier
         self.slider_tick_rate = slider_tick_rate
+        self.background = background
+        self.videos = videos
         self.timing_points = timing_points
         self._hit_objects = hit_objects
         # cache hit object stacking at different ar and cs values
@@ -2584,6 +2588,17 @@ class Beatmap:
             "SliderTickRate",
             default=1.0,  # taken from wiki
         )
+        
+        background = None
+        videos = []
+
+        if 'Events' in groups:
+            for line in groups['Events']:
+                if line.startswith('0') and background is None:
+                    # Only the first background is used
+                    background = line.split('\"')[1]
+                elif line.startswith('Video') or line.startswith('1'):
+                    videos.append(line.split('\"')[1])
 
         return cls(
             format_version=format_version,
@@ -2675,6 +2690,8 @@ class Beatmap:
             ),
             slider_multiplier=slider_multiplier,
             slider_tick_rate=slider_tick_rate,
+            background=background,
+            videos=videos,
             timing_points=timing_points,
             hit_objects=list(
                 map(
@@ -2820,9 +2837,13 @@ class Beatmap:
 
         # pack Events section
         packed_str += "[Events]\n"
+        packed_str += '// Background and Video events\n'
+        if self.background is not None:
+            packed_str += f'0,0,"{self.background}",0,0\n'
+        for video in self.videos:
+            packed_str += f'Video,0,"{video}"\n'
         packed_str += (
-            "// Background and Video events\n"
-            "// Break Periods\n"
+            '// Break Periods\n'
             "// Storyboard Layer 0(Background)\n"
             "// Storyboard Layer 1(Fail)\n"
             "// Storyboard Layer 2(Pass)\n"

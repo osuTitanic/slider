@@ -289,6 +289,14 @@ def test_od(beatmap):
     assert beatmap.od() == 9
 
 
+def test_background(beatmap):
+    assert beatmap.background == "miiro_no_scenario.png"
+
+
+def test_video(beatmap):
+    assert beatmap.videos == []
+
+
 def test_pack(beatmap):
     # Pack the beatmap and parse it again to see if there is difference.
     packed_str = beatmap.pack()
@@ -332,6 +340,8 @@ def test_pack(beatmap):
         "approach_rate",
         "slider_multiplier",
         "slider_tick_rate",
+         # Event section fields
+        'background', 'videos',
     ]
     hitobj_attrs = [
         "position",
