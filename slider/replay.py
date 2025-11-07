@@ -1,16 +1,27 @@
+from __future__ import annotations
+
 import bisect
 import datetime
 import lzma
 import os
 from enum import unique
+from typing import (
+    TYPE_CHECKING,
+    BinaryIO,
+    Sequence,
+    Tuple,
+    Dict,
+    List,
+)
 
 from .beatmap import Circle, Slider, Spinner
 from .bit_enum import BitEnum
 from .game_mode import GameMode
-from .mod import Mod, circle_radius, od_to_ms
+from .mod import HitWindows, Mod, circle_radius, od_to_ms
 from .position import Position
 from .utils import (
     accuracy,
+    ByteBuffer,
     consume_byte,
     consume_datetime,
     consume_int,
@@ -19,6 +30,14 @@ from .utils import (
     lazyval,
     orange,
 )
+
+if TYPE_CHECKING:
+    from .beatmap import Beatmap, HitObject
+    from .client import Client
+    from .library import Library
+
+
+ScoreBuckets = Dict[str, List["HitObject"]]
 
 
 @unique
@@ -50,7 +69,15 @@ class Action:
         is the second mouse button pressed?
     """
 
-    def __init__(self, offset, position, key1, key2, mouse1, mouse2):
+    def __init__(
+        self,
+        offset: datetime.timedelta,
+        position: Position,
+        key1: bool,
+        key2: bool,
+        mouse1: bool,
+        mouse2: bool,
+    ) -> None:
         self.offset = offset
         self.position = position
         self.key1 = key1
@@ -59,7 +86,7 @@ class Action:
         self.mouse2 = mouse2
 
     @property
-    def action_bitmask(self):
+    def action_bitmask(self) -> int:
         """Get the action bitmask from an action."""
         return ActionBitMask.pack(
             m1=self.mouse1,
@@ -68,8 +95,8 @@ class Action:
             k2=self.key2,
         )
 
-    def __repr__(self):
-        actions = []
+    def __repr__(self) -> str:
+        actions: List[str] = []
         if self.key1:
             actions.append("K1")
         if self.key2:
@@ -84,8 +111,12 @@ class Action:
         )
 
 
-def _consume_life_bar_graph(buffer):
+def _consume_life_bar_graph(
+    buffer: ByteBuffer,
+) -> List[Tuple[datetime.timedelta, float]]:
     life_bar_graph_raw = consume_string(buffer)
+    if not life_bar_graph_raw:
+        return []
     return [
         (datetime.timedelta(milliseconds=int(offset)), float(value))
         for offset, value in (
@@ -94,13 +125,13 @@ def _consume_life_bar_graph(buffer):
     ]
 
 
-def _consume_actions(buffer):
+def _consume_actions(buffer: ByteBuffer) -> List[Action]:
     compressed_byte_count = consume_int(buffer)
-    compressed_data = buffer[:compressed_byte_count]
+    compressed_data = bytes(buffer[:compressed_byte_count])
     del buffer[:compressed_byte_count]
     decompressed_data = lzma.decompress(compressed_data)
 
-    out = []
+    out: List[Action] = []
     offset = 0
     for raw_action in decompressed_data.split(b","):
         if not raw_action:
@@ -121,7 +152,7 @@ def _consume_actions(buffer):
     return out
 
 
-def _within(p1, p2, d):
+def _within(p1: Position, p2: Position, d: float) -> bool:
     """Determines whether 2 points are within a distance of each other
 
     Parameters
@@ -141,11 +172,16 @@ def _within(p1, p2, d):
     return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 < d**2
 
 
-def _pressed(datum):
+def _pressed(datum: Action) -> bool:
     return datum.key1 or datum.key2 or datum.mouse1 or datum.mouse2
 
 
-def _process_circle(obj, rdatum, hw, scores):
+def _process_circle(
+    obj: Circle,
+    rdatum: Action,
+    hw: HitWindows,
+    scores: ScoreBuckets,
+) -> None:
     out_by = abs(rdatum.offset - obj.time)
     if out_by < datetime.timedelta(milliseconds=hw.hit_300):
         scores["300s"].append(obj)
@@ -156,8 +192,14 @@ def _process_circle(obj, rdatum, hw, scores):
         scores["50s"].append(obj)
 
 
-def _process_slider(obj, rdata, head_hit, rad, scores):
-    t_changes = []
+def _process_slider(
+    obj: Slider,
+    rdata: Sequence[Action],
+    head_hit: bool,
+    rad: float,
+    scores: ScoreBuckets,
+) -> None:
+    t_changes: List[float] = []
     t_changes_append = t_changes.append
     duration = obj.end_time - obj.time
 
@@ -183,7 +225,9 @@ def _process_slider(obj, rdata, head_hit, rad, scores):
                 t_changes_append(t)
                 on = True
 
-    tick_ts = list(orange(obj.tick_rate, obj.num_beats, obj.tick_rate))
+    tick_ts: List[float] = [
+        float(t) for t in orange(obj.tick_rate, obj.num_beats, obj.tick_rate)
+    ]
     missed_points = 0 if head_hit else 1
     for tick in tick_ts:
         bi = bisect.bisect_left(t_changes, tick)
@@ -323,55 +367,55 @@ class Replay:
 
     def __init__(
         self,
-        mode,
-        version,
-        beatmap_md5,
-        player_name,
-        replay_md5,
-        count_300,
-        count_100,
-        count_50,
-        count_geki,
-        count_katu,
-        count_miss,
-        score,
-        max_combo,
-        full_combo,
-        no_fail,
-        easy,
-        no_video,
-        hidden,
-        hard_rock,
-        sudden_death,
-        double_time,
-        relax,
-        half_time,
-        nightcore,
-        flashlight,
-        autoplay,
-        spun_out,
-        auto_pilot,
-        perfect,
-        key4,
-        key5,
-        key6,
-        key7,
-        key8,
-        fade_in,
-        random,
-        cinema,
-        target_practice,
-        key9,
-        coop,
-        key1,
-        key3,
-        key2,
-        scoreV2,
-        life_bar_graph,
-        timestamp,
-        actions,
-        beatmap,
-    ):
+        mode: GameMode,
+        version: int,
+        beatmap_md5: str,
+        player_name: str,
+        replay_md5: str,
+        count_300: int,
+        count_100: int,
+        count_50: int,
+        count_geki: int,
+        count_katu: int,
+        count_miss: int,
+        score: int,
+        max_combo: int,
+        full_combo: bool,
+        no_fail: bool,
+        easy: bool,
+        no_video: bool,
+        hidden: bool,
+        hard_rock: bool,
+        sudden_death: bool,
+        double_time: bool,
+        relax: bool,
+        half_time: bool,
+        nightcore: bool,
+        flashlight: bool,
+        autoplay: bool,
+        spun_out: bool,
+        auto_pilot: bool,
+        perfect: bool,
+        key4: bool,
+        key5: bool,
+        key6: bool,
+        key7: bool,
+        key8: bool,
+        fade_in: bool,
+        random: bool,
+        cinema: bool,
+        target_practice: bool,
+        key9: bool,
+        coop: bool,
+        key1: bool,
+        key3: bool,
+        key2: bool,
+        scoreV2: bool,
+        life_bar_graph: Sequence[Tuple[datetime.timedelta, float]],
+        timestamp: datetime.datetime,
+        actions: Sequence[Action],
+        beatmap: "Beatmap | None",
+    ) -> None:
         self.mode = mode
         self.version = version
         self.beatmap_md5 = beatmap_md5
@@ -416,13 +460,15 @@ class Replay:
         self.key3 = key3
         self.key2 = key2
         self.scoreV2 = scoreV2
-        self.life_bar_graph = life_bar_graph
+        self.life_bar_graph: List[Tuple[datetime.timedelta, float]] = list(
+            life_bar_graph
+        )
         self.timestamp = timestamp
-        self.actions = actions
-        self.beatmap = beatmap
+        self.actions: List[Action] = list(actions)
+        self.beatmap: Beatmap | None = beatmap
 
     @lazyval
-    def accuracy(self):
+    def accuracy(self) -> float:
         """The accuracy achieved in the replay in the range [0, 1]."""
         if self.mode != GameMode.standard:
             raise NotImplementedError(
@@ -437,8 +483,12 @@ class Replay:
         )
 
     @lazyval
-    def performance_points(self):
-        return self.beatmap.performance_points(
+    def performance_points(self) -> float:
+        beatmap = self.beatmap
+        if beatmap is None:
+            raise ValueError("performance points require a known beatmap")
+
+        return beatmap.performance_points(
             count_300=self.count_300,
             count_100=self.count_100,
             count_50=self.count_50,
@@ -453,7 +503,7 @@ class Replay:
         )
 
     @lazyval
-    def failed(self):
+    def failed(self) -> bool:
         """Did the user fail this attempt?"""
         for _, value in self.life_bar_graph:
             if not value:
@@ -463,8 +513,14 @@ class Replay:
 
     @classmethod
     def from_path(
-        cls, path, *, library=None, client=None, save=False, retrieve_beatmap=True
-    ):
+        cls,
+        path: str | os.PathLike[str],
+        *,
+        library: Library | None = None,
+        client: Client | None = None,
+        save: bool = False,
+        retrieve_beatmap: bool = True,
+    ) -> "Replay":
         """Read in a ``Replay`` object from a ``.osr`` file on disk.
 
         Parameters
@@ -502,8 +558,14 @@ class Replay:
 
     @classmethod
     def from_directory(
-        cls, path, *, library=None, client=None, save=False, retrieve_beatmap=True
-    ):
+        cls,
+        path: str | os.PathLike[str],
+        *,
+        library: Library | None = None,
+        client: Client | None = None,
+        save: bool = False,
+        retrieve_beatmap: bool = True,
+    ) -> List["Replay"]:
         """Read in a list of ``Replay`` objects from a directory of ``.osr``
         files.
 
@@ -545,8 +607,14 @@ class Replay:
 
     @classmethod
     def from_file(
-        cls, file, *, library=None, client=None, save=False, retrieve_beatmap=True
-    ):
+        cls,
+        file: BinaryIO,
+        *,
+        library: Library | None = None,
+        client: Client | None = None,
+        save: bool = False,
+        retrieve_beatmap: bool = True,
+    ) -> "Replay":
         """Read in a ``Replay`` object from an open file object.
 
         Parameters
@@ -583,8 +651,14 @@ class Replay:
 
     @classmethod
     def parse(
-        cls, data, *, library=None, client=None, save=False, retrieve_beatmap=True
-    ):
+        cls,
+        data: bytes,
+        *,
+        library: Library | None = None,
+        client: Client | None = None,
+        save: bool = False,
+        retrieve_beatmap: bool = True,
+    ) -> "Replay":
         """Parse a replay from ``.osr`` file data.
 
         Parameters
@@ -611,8 +685,10 @@ class Replay:
         ValueError
             Raised when ``data`` is not in the ``.osr`` format.
         """
+        active_library = library
+
         if retrieve_beatmap:
-            if library is None and client is None:
+            if active_library is None and client is None:
                 raise ValueError(
                     "one of library or client must be passed if you wish the"
                     " beatmap to be retrieved",
@@ -620,17 +696,30 @@ class Replay:
 
             use_client = client is not None
             if use_client:
-                if library is not None:
+                if active_library is not None:
                     raise ValueError("only one of library or client can be passed")
-                library = client.library
+                assert client is not None
+                active_library = client.library
 
         buffer = bytearray(data)
 
         mode = GameMode(consume_byte(buffer))
         version = consume_int(buffer)
-        beatmap_md5 = consume_string(buffer)
-        player_name = consume_string(buffer)
-        replay_md5 = consume_string(buffer)
+
+        beatmap_md5_raw = consume_string(buffer)
+        if beatmap_md5_raw is None:
+            raise ValueError("replay data missing beatmap md5")
+        beatmap_md5 = beatmap_md5_raw
+
+        player_name_raw = consume_string(buffer)
+        if player_name_raw is None:
+            raise ValueError("replay data missing player name")
+        player_name = player_name_raw
+
+        replay_md5_raw = consume_string(buffer)
+        if replay_md5_raw is None:
+            raise ValueError("replay data missing replay md5")
+        replay_md5 = replay_md5_raw
         count_300 = consume_short(buffer)
         count_100 = consume_short(buffer)
         count_50 = consume_short(buffer)
@@ -651,11 +740,13 @@ class Replay:
         del mod_kwargs["last_mod"]
 
         if retrieve_beatmap:
+            assert active_library is not None
             try:
-                beatmap = library.lookup_by_md5(beatmap_md5)
+                beatmap = active_library.lookup_by_md5(beatmap_md5)
             except KeyError:
                 if not use_client:
                     raise
+                assert client is not None
                 beatmap = client.beatmap(
                     beatmap_md5=beatmap_md5,
                 ).beatmap(save=save)
@@ -685,7 +776,7 @@ class Replay:
         )
 
     @lazyval
-    def hits(self):
+    def hits(self) -> ScoreBuckets:
         """Dictionary containing beatmap's hit objects sorted into
         300s, 100s, 50s, misses, slider_breaks as they were hit in the replay
 
@@ -697,8 +788,11 @@ class Replay:
         Spinners are not yet calculated so are always in the 300s category.
         """
         beatmap = self.beatmap
+        if beatmap is None:
+            raise ValueError("cannot classify hits without a beatmap")
+
         actions = self.actions
-        scores = {
+        scores: ScoreBuckets = {
             "300s": [],
             "100s": [],
             "50s": [],
