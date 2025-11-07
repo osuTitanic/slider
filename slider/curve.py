@@ -382,9 +382,7 @@ class Catmull(Curve):
         points_array = np.array(points)
 
         # implementation follows notes at https://cubic.org/docs/hermite.htm
-        self.h = np.array(
-            [[2, -2, 1, 1], [-3, 3, -2, -1], [0, 0, 1, 0], [1, 0, 0, 0]]
-        )
+        self.h = np.array([[2, -2, 1, 1], [-3, 3, -2, -1], [0, 0, 1, 0], [1, 0, 0, 0]])
 
         tangents_x: List[float] = []
         tangents_y: List[float] = []

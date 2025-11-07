@@ -15,7 +15,7 @@ from typing import (
     Protocol,
     Tuple,
     Union,
-    cast
+    cast,
 )
 
 import requests  # type: ignore[import]
@@ -50,6 +50,7 @@ sanitized_name : str
     The name with invalid characters stripped out.
 """
 
+
 class _CachedBeatmapReader(Protocol):
     def __call__(
         self,
@@ -57,11 +58,9 @@ class _CachedBeatmapReader(Protocol):
         *,
         beatmap_id: Optional[Union[int, str]] = ...,
         beatmap_md5: Optional[str] = ...,
-    ) -> Beatmap:
-        ...
+    ) -> Beatmap: ...
 
-    def cache_clear(self) -> None:
-        ...
+    def cache_clear(self) -> None: ...
 
 
 class Library:
@@ -262,7 +261,9 @@ class Library:
                 )
             else:
                 if beatmap_md5 is None:
-                    raise ValueError("beatmap_md5 must be provided if beatmap_id is None")
+                    raise ValueError(
+                        "beatmap_md5 must be provided if beatmap_id is None"
+                    )
                 path_query = self._db.execute(
                     "SELECT 1 FROM beatmaps WHERE md5 = ? LIMIT 1",
                     (beatmap_md5,),
@@ -296,7 +297,9 @@ class Library:
                 )
             else:
                 if beatmap_md5 is None:
-                    raise ValueError("beatmap_md5 must be provided if beatmap_id is None")
+                    raise ValueError(
+                        "beatmap_md5 must be provided if beatmap_id is None"
+                    )
                 key = beatmap_md5
                 path_query = self._db.execute(
                     "SELECT path FROM beatmaps WHERE md5 = ?",

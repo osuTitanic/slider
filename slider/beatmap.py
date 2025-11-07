@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import re
+import inspect
 import operator as op
 from bisect import bisect_left
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -33,7 +33,6 @@ from .game_mode import GameMode
 from .position import Point, Position, distance
 from .mod import ar_to_ms, circle_radius, ms_300_to_od, ms_to_ar, od_to_ms_300
 from .utils import (
-    accuracy as calculate_accuracy,
     lazyval,
     memoize,
     no_default,
@@ -46,11 +45,7 @@ GroupValue = Union[List[str], Dict[str, str]]
 GroupsMapping = Dict[str, GroupValue]
 
 
-def _get(
-    cs: Sequence[str],
-    ix: int,
-    default: str | NoDefaultType = no_default
-) -> str:
+def _get(cs: Sequence[str], ix: int, default: str | NoDefaultType = no_default) -> str:
     try:
         return cs[ix]
     except IndexError:
@@ -1148,8 +1143,7 @@ def _get_as_str(
     groups: Mapping[str, Mapping[str, str]],
     section: str,
     field: str,
-) -> str:
-    ...
+) -> str: ...
 
 
 @overload
@@ -1158,8 +1152,7 @@ def _get_as_str(
     section: str,
     field: str,
     default: T,
-) -> str | T:
-    ...
+) -> str | T: ...
 
 
 def _get_as_str(
@@ -1207,8 +1200,7 @@ def _get_as_int(
     groups: Mapping[str, Mapping[str, str]],
     section: str,
     field: str,
-) -> int:
-    ...
+) -> int: ...
 
 
 @overload
@@ -1217,8 +1209,7 @@ def _get_as_int(
     section: str,
     field: str,
     default: T,
-) -> int | T:
-    ...
+) -> int | T: ...
 
 
 def _get_as_int(
@@ -1266,8 +1257,7 @@ def _get_as_int_list(
     groups: Mapping[str, Mapping[str, str]],
     section: str,
     field: str,
-) -> List[int]:
-    ...
+) -> List[int]: ...
 
 
 @overload
@@ -1276,8 +1266,7 @@ def _get_as_int_list(
     section: str,
     field: str,
     default: T,
-) -> List[int] | T:
-    ...
+) -> List[int] | T: ...
 
 
 def _get_as_int_list(
@@ -1329,8 +1318,7 @@ def _get_as_float(
     groups: Mapping[str, Mapping[str, str]],
     section: str,
     field: str,
-) -> float:
-    ...
+) -> float: ...
 
 
 @overload
@@ -1339,8 +1327,7 @@ def _get_as_float(
     section: str,
     field: str,
     default: T,
-) -> float | T:
-    ...
+) -> float | T: ...
 
 
 def _get_as_float(
@@ -1388,8 +1375,7 @@ def _get_as_bool(
     groups: Mapping[str, Mapping[str, str]],
     section: str,
     field: str,
-) -> bool:
-    ...
+) -> bool: ...
 
 
 @overload
@@ -1398,8 +1384,7 @@ def _get_as_bool(
     section: str,
     field: str,
     default: T,
-) -> bool | T:
-    ...
+) -> bool | T: ...
 
 
 def _get_as_bool(
@@ -2114,9 +2099,7 @@ class Beatmap:
         self._stars_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
         self._aim_stars_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
         self._speed_stars_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
-        self._rhythm_awkwardness_cache: Dict[
-            Tuple[bool, bool, bool, bool], float
-        ] = {}
+        self._rhythm_awkwardness_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
 
     @property
     def display_name(self) -> str:
@@ -2934,9 +2917,9 @@ class Beatmap:
             for line in cast(List[str], groups["Events"]):
                 if line.startswith("0") and background is None:
                     # Only the first background is used
-                    background = line.split("\"")[1]
+                    background = line.split('"')[1]
                 elif line.startswith("Video") or line.startswith("1"):
-                    videos.append(line.split("\"")[1])
+                    videos.append(line.split('"')[1])
 
         return cls(
             format_version=format_version,
@@ -3185,13 +3168,13 @@ class Beatmap:
 
         # pack Events section
         packed_str += "[Events]\n"
-        packed_str += '// Background and Video events\n'
+        packed_str += "// Background and Video events\n"
         if self.background is not None:
             packed_str += f'0,0,"{self.background}",0,0\n'
         for video in self.videos:
             packed_str += f'Video,0,"{video}"\n'
         packed_str += (
-            '// Break Periods\n'
+            "// Break Periods\n"
             "// Storyboard Layer 0(Background)\n"
             "// Storyboard Layer 1(Fail)\n"
             "// Storyboard Layer 2(Pass)\n"
@@ -3367,7 +3350,9 @@ class Beatmap:
 
         modify: Callable[[HitObject], HitObject]
         if double_time:
-            modify = cast(Callable[[HitObject], HitObject], op.attrgetter("double_time"))
+            modify = cast(
+                Callable[[HitObject], HitObject], op.attrgetter("double_time")
+            )
         elif half_time:
             modify = cast(Callable[[HitObject], HitObject], op.attrgetter("half_time"))
         else:
@@ -3477,7 +3462,9 @@ class Beatmap:
 
         modify: Callable[[HitObject], HitObject]
         if double_time:
-            modify = cast(Callable[[HitObject], HitObject], op.attrgetter("double_time"))
+            modify = cast(
+                Callable[[HitObject], HitObject], op.attrgetter("double_time")
+            )
         elif half_time:
             modify = cast(Callable[[HitObject], HitObject], op.attrgetter("half_time"))
         else:
@@ -3740,8 +3727,7 @@ class Beatmap:
         count_100 = np.round(
             -3.0
             * (
-                (clamped_accuracy * 0.01 - 1.0)
-                * len(self._hit_objects)
+                (clamped_accuracy * 0.01 - 1.0) * len(self._hit_objects)
                 + count_miss_array
             )
             * 0.5,
@@ -3752,8 +3738,7 @@ class Beatmap:
         count_50[mask] = np.round(
             -6.0
             * (
-                (clamped_accuracy[mask] * 0.01 - 1.0)
-                * len(self._hit_objects)
+                (clamped_accuracy[mask] * 0.01 - 1.0) * len(self._hit_objects)
                 + count_miss_array[mask]
             )
             * 0.2,
@@ -3762,9 +3747,7 @@ class Beatmap:
 
         count_100[~mask] = np.minimum(max_300[~mask], count_100[~mask])
 
-        count_300 = (
-            len(self._hit_objects) - count_100 - count_50 - count_miss_array
-        )
+        count_300 = len(self._hit_objects) - count_100 - count_50 - count_miss_array
 
         return count_300, count_100, count_50, count_miss_array
 
@@ -3912,8 +3895,7 @@ class Beatmap:
                 count_miss = np.array(count_miss, ndmin=1, copy=False, dtype=np.int64)
 
             if np.any(
-                count_300 + count_100 + count_50 + count_miss
-                != len(self._hit_objects)
+                count_300 + count_100 + count_50 + count_miss != len(self._hit_objects)
             ):
                 s = count_300 + count_100 + count_50 + count_miss
                 os = len(self._hit_objects)

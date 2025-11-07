@@ -342,8 +342,9 @@ def test_pack(beatmap):
         "approach_rate",
         "slider_multiplier",
         "slider_tick_rate",
-         # Event section fields
-        'background', 'videos',
+        # Event section fields
+        "background",
+        "videos",
     ]
     hitobj_attrs = [
         "position",

@@ -170,6 +170,7 @@ class HitWindows(NamedTuple):
     A hit further than the ``hit_50`` value away from the time of a hit object
     is a miss.
     """
+
     hit_300: float
     hit_100: float
     hit_50: float

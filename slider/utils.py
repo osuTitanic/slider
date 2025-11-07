@@ -20,12 +20,14 @@ class lazyval(Generic[_OwnerT, _ValueT]):
         self._name = name
 
     @overload
-    def __get__(self, instance: None, owner: type[_OwnerT]) -> "lazyval[_OwnerT, _ValueT]":
-        ...
+    def __get__(
+        self, instance: None, owner: type[_OwnerT]
+    ) -> "lazyval[_OwnerT, _ValueT]": ...
 
     @overload
-    def __get__(self, instance: _OwnerT, owner: type[_OwnerT]) -> _ValueT:
-        ...
+    def __get__(
+        self, instance: _OwnerT, owner: type[_OwnerT]
+    ) -> _ValueT: ...
 
     def __get__(
         self,
