@@ -897,12 +897,12 @@ class Slider(HitObject):
                 )
 
             try:
-                x_coord = int(x_str)
+                x_coord = int(float(x_str))
             except ValueError:
                 raise ValueError(f"x should be an int, got {x_str!r}")
 
             try:
-                y_coord = int(y_str)
+                y_coord = int(float(y_str))
             except ValueError:
                 raise ValueError(f"y should be an int, got {y_str!r}")
 
