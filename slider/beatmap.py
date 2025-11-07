@@ -2904,6 +2904,9 @@ class Beatmap:
         if "HitObjects" not in groups:
             groups["HitObjects"] = {}
 
+        if groups["HitObjects"] and not groups["TimingPoints"]:
+            raise ValueError("beatmap is missing timing points")
+
         timing_points: List[TimingPoint] = []
         # the parent starts as None because the first timing point should
         # not be inherited
