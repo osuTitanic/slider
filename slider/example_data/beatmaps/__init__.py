@@ -3,7 +3,7 @@ from pathlib import Path
 from slider import Beatmap
 
 
-def example_beatmap(name):
+def example_beatmap(name: str) -> Beatmap:
     """Load one of the example beatmaps.
 
     Parameters
@@ -26,7 +26,7 @@ _sendan_life_versions = frozenset(
 )
 
 
-def sendan_life(version="Crystal's Garakowa"):
+def sendan_life(version: str = "Crystal's Garakowa") -> Beatmap:
     """Load a version of the Sendan Life beatmap.
 
     Parameters
@@ -73,7 +73,7 @@ _ai_no_scenario_versions = frozenset(
 )
 
 
-def miiro_vs_ai_no_scenario(version="Tatoe"):
+def miiro_vs_ai_no_scenario(version: str = "Tatoe") -> Beatmap:
     """Load a version of the MIIRO vs. Ai no Scenario beatmap.
 
     Parameters

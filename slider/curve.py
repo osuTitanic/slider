@@ -24,7 +24,7 @@ class Curve(metaclass=ABCMeta):
 
     Parameters
     ----------
-    points : list[Position]
+    points : Sequence[Position]
         The positions of the control points.
     req_length : float
         The pixel length of the curve.
@@ -319,7 +319,7 @@ class Perfect(Curve):
 
     Parameters
     ----------
-    points : list[Position]
+    points : Sequence[Position]
         The positions of the control points.
     req_length : float
         The pixel length of the curve.

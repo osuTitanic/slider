@@ -2,7 +2,6 @@ from datetime import timedelta
 from math import isclose
 
 import pytest
-
 import slider.beatmap
 import slider.curve
 import slider.example_data.beatmaps
@@ -158,10 +157,10 @@ def test_hit_objects_stacking():
         countdown=False,
         sample_set="soft",
         stack_leniency=1,
-        mode=0,
+        mode=slider.GameMode.standard,
         letterbox_in_breaks=False,
         widescreen_storyboard=False,
-        bookmarks=[0],
+        bookmarks=[timedelta(seconds=0)],
         distance_spacing=1,
         beat_divisor=1,
         grid_size=1,
@@ -205,7 +204,7 @@ def test_hit_objects_hard_rock(beatmap):
 
 
 def test_legacy_slider_end():
-    beatmap = slider.example_data.beatmaps.miiro_vs_ai_no_scenario()
+    beatmap: slider.Beatmap = slider.example_data.beatmaps.miiro_vs_ai_no_scenario()
 
     # lazer uses float values for the duration of sliders instead of ints as in
     # this library. This means we'll have some rounding errors against the
@@ -250,7 +249,7 @@ def test_legacy_slider_end():
 
 
 def test_closest_hitobject():
-    beatmap = slider.example_data.beatmaps.miiro_vs_ai_no_scenario("Beginner")
+    beatmap: slider.Beatmap = slider.example_data.beatmaps.miiro_vs_ai_no_scenario("Beginner")
     hit_object1 = beatmap.hit_objects()[4]
     hit_object2 = beatmap.hit_objects()[5]
     hit_object3 = beatmap.hit_objects()[6]
