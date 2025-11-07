@@ -2886,6 +2886,9 @@ class Beatmap:
             "OverallDifficulty",
         )
 
+        if "TimingPoints" not in groups:
+            raise ValueError("missing timing points in beatmap file")
+
         timing_points: List[TimingPoint] = []
         # the parent starts as None because the first timing point should
         # not be inherited
