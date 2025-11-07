@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import math
 import inspect
 import numpy as np
 import operator as op
@@ -977,6 +978,12 @@ class Slider(HitObject):
 
         pixels_per_beat = slider_multiplier * 100 * velocity_multiplier
         num_beats = (pixel_length * repeat) / pixels_per_beat
+
+        if math.isnan(num_beats):
+            # In really rare cases, this value can be "NaN"
+            # I'm not sure if this is the correct way to handle this
+            num_beats = 0
+
         duration = timedelta(milliseconds=int(num_beats * ms_per_beat))
 
         ticks = int(
