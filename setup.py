@@ -36,7 +36,6 @@ setup(
     extras_require={
         "dev": [
             "ruff",
-            "shed",
             "pytest",
         ],
         "cli": [
