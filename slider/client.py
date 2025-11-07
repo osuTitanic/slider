@@ -1,8 +1,9 @@
-import datetime
+from __future__ import annotations
 from enum import IntEnum, unique
 from typing import Callable, TypeVar
 
 import requests  # type: ignore[import]
+import datetime
 
 from .game_mode import GameMode
 from .mod import Mod
@@ -220,7 +221,7 @@ class User:
     user_id : int
         The user id.
     user_name : str
-        The user name.
+        The user's name.
     count_300 : int
         The total number of 300s ever hit.
     count_100 : int
@@ -533,9 +534,11 @@ class Client:
         "passcount": "pass_count",
     }
 
+    @staticmethod
     def _parse_date(cs):
         return datetime.datetime.strptime(cs, "%Y-%m-%f %H:%M:%S")
 
+    @staticmethod
     def _parse_timedelta(cs):
         return datetime.timedelta(seconds=int(cs))
 
@@ -548,6 +551,7 @@ class Client:
 
         return func
 
+    @staticmethod
     def _identity(cs):
         return cs
 
@@ -698,6 +702,7 @@ class Client:
         "count_rank_a": "count_a",
     }
 
+    @staticmethod
     def _parse_user_events(events, _parse_date=_parse_date):
         out = []
         for event in events:
@@ -714,7 +719,7 @@ class Client:
         "user_id": int,
         "user_name": _identity,
         # these attributes can be null for users that have never played before,
-        # see user 17906393 / #97 on github
+        # see user 17906393 / #97 on GitHub
         "count_300": _parse_optional(int),
         "count_100": _parse_optional(int),
         "count_50": _parse_optional(int),
@@ -799,7 +804,6 @@ class Client:
             },
             game_mode=game_mode,
         )
-        return user
 
     _user_best_aliases = {
         "username": "user_name",

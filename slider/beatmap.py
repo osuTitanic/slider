@@ -80,7 +80,7 @@ class TimingPoint:
         offset timing, or changing slider speeds. If this is not an inherited
         timing point the parent should be ``None``.
     kiai_mode : bool
-        Wheter or not kiai time effects are active.
+        Whether or not kiai time effects are active.
     """
 
     def __init__(
@@ -91,7 +91,7 @@ class TimingPoint:
         sample_type: int,
         sample_set: int,
         volume: int,
-        parent: "TimingPoint" | None,
+        parent: "TimingPoint | None",
         kiai_mode: bool,
     ) -> None:
         self.offset = offset
@@ -157,7 +157,7 @@ class TimingPoint:
         )
 
     @classmethod
-    def parse(cls, data: str, parent: "TimingPoint" | None) -> "TimingPoint":
+    def parse(cls, data: str, parent: "TimingPoint | None") -> "TimingPoint":
         """Parse a TimingPoint object from a line in a ``.osu`` file.
 
         Parameters
@@ -1840,7 +1840,7 @@ class _DifficultyHitObject:
         self,
         hit_object: HitObject,
         radius: float,
-        previous: "_DifficultyHitObject" | None = None,
+        previous: "_DifficultyHitObject | None" = None,
     ) -> None:
         self.hit_object = hit_object
 

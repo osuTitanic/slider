@@ -33,7 +33,7 @@ class lazyval(Generic[_OwnerT, _ValueT]):
         self,
         instance: _OwnerT | None,
         owner: type[_OwnerT],
-    ) -> _ValueT | "lazyval[_OwnerT, _ValueT]":
+    ) -> "_ValueT | lazyval[_OwnerT, _ValueT]":
         if instance is None:
             return self
 

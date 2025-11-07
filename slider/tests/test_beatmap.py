@@ -16,7 +16,7 @@ def beatmap():
 
 def test_parse_beatmap_format_v3():
     # v3 is a very old beatmap version. We just want to make sure it doesn't
-    # error, see #79 and #87 on github.
+    # error, see #79 and #87 on GitHub.
     slider.example_data.beatmaps.example_beatmap(
         "Sambomaster - Sekai wa Sore wo Ai to Yobunda ze (ZZT the Fifth) "
         "[Normal].osu"
