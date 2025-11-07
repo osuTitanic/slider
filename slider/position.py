@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import datetime
-from typing import NamedTuple
-
 import numpy as np
+from typing import NamedTuple
 
 
 class Position(NamedTuple):

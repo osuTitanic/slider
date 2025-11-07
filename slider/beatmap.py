@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import re
 import inspect
+import numpy as np
 import operator as op
-from bisect import bisect_left
-from collections.abc import Iterable, Iterator, Mapping, Sequence
-from datetime import timedelta
-from enum import IntEnum, unique
+from zipfile import ZipFile
 from functools import partial
+from datetime import timedelta
+from bisect import bisect_left
+from enum import IntEnum, unique
 from itertools import chain, cycle, islice
+from collections.abc import (
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence
+)
 from typing import (
     Any,
     Callable,
@@ -24,9 +31,6 @@ from typing import (
     overload,
 )
 
-import numpy as np
-from zipfile import ZipFile
-
 from .abc import abstractmethod
 from .curve import Curve
 from .game_mode import GameMode
@@ -38,6 +42,7 @@ from .utils import (
     no_default,
     orange,
 )
+
 
 T = TypeVar("T")
 NoDefaultType = type[no_default]

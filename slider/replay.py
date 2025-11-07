@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import os
+import lzma
 import bisect
 import datetime
-import lzma
-import os
 from enum import unique
 from typing import (
     TYPE_CHECKING,
@@ -20,13 +20,13 @@ from .game_mode import GameMode
 from .mod import HitWindows, Mod, circle_radius, od_to_ms
 from .position import Position
 from .utils import (
+    consume_datetime,
+    consume_string,
+    consume_short,
+    consume_byte,
+    consume_int,
     accuracy,
     ByteBuffer,
-    consume_byte,
-    consume_datetime,
-    consume_int,
-    consume_short,
-    consume_string,
     lazyval,
     orange,
 )

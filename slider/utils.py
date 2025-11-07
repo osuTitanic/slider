@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import datetime
 from functools import lru_cache
-from typing import Any, Callable, Generic, Iterator, MutableSequence, TypeVar, overload
+from typing import (
+    MutableSequence,
+    overload,
+    Callable,
+    Iterator,
+    TypeVar,
+    Generic,
+    Any
+)
 
 
 _OwnerT = TypeVar("_OwnerT")

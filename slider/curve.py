@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import bisect
 import math
-from itertools import accumulate, chain
-from typing import Iterator, List, Sequence, TYPE_CHECKING
-
+import bisect
 import numpy as np
 import numpy.typing as npt
+from itertools import accumulate, chain
+from typing import Iterator, List, Sequence, TYPE_CHECKING
 
 try:  # SciPy >= 0.19
     from scipy.special import comb  # type: ignore[import]

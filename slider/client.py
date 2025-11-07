@@ -1,9 +1,9 @@
 from __future__ import annotations
+
+import datetime
+import requests  # type: ignore[import]
 from enum import IntEnum, unique
 from typing import Callable, TypeVar
-
-import requests  # type: ignore[import]
-import datetime
 
 from .game_mode import GameMode
 from .mod import Mod
