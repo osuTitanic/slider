@@ -1,20 +1,36 @@
+from __future__ import annotations
+
 import inspect
-import operator as op
 import re
+import operator as op
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import timedelta
 from enum import IntEnum, unique
 from functools import partial
 from itertools import chain, cycle, islice
-from typing import Callable, ClassVar
-from zipfile import ZipFile
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    IO,
+    List,
+    Literal,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import numpy as np
+from zipfile import ZipFile
 
 from .abc import abstractmethod
 from .curve import Curve
 from .game_mode import GameMode
-from .mod import ar_to_ms, circle_radius, ms_300_to_od, ms_to_ar, od_to_ms_300
 from .position import Point, Position, distance
+from .mod import ar_to_ms, circle_radius, ms_300_to_od, ms_to_ar, od_to_ms_300
 from .utils import (
     accuracy as calculate_accuracy,
     lazyval,
@@ -23,8 +39,15 @@ from .utils import (
     orange,
 )
 
+T = TypeVar("T")
+NoDefaultType = type[no_default]
+GroupValue = Union[List[str], Dict[str, str]]
+GroupsMapping = Dict[str, GroupValue]
 
-def _get(cs, ix, default=no_default):
+
+def _get(
+    cs: Sequence[str], ix: int, default: str | NoDefaultType = no_default
+) -> str:
     try:
         return cs[ix]
     except IndexError:
@@ -64,15 +87,15 @@ class TimingPoint:
 
     def __init__(
         self,
-        offset,
-        ms_per_beat,
-        meter,
-        sample_type,
-        sample_set,
-        volume,
-        parent,
-        kiai_mode,
-    ):
+        offset: timedelta,
+        ms_per_beat: float,
+        meter: int,
+        sample_type: int,
+        sample_set: int,
+        volume: int,
+        parent: "TimingPoint" | None,
+        kiai_mode: bool,
+    ) -> None:
         self.offset = offset
         self.ms_per_beat = ms_per_beat
         self.meter = meter
@@ -83,7 +106,7 @@ class TimingPoint:
         self.kiai_mode = kiai_mode
 
     @lazyval
-    def half_time(self):
+    def half_time(self) -> "TimingPoint":
         """The ``TimingPoint`` as it would appear with
         :data:`~slider.mod.Mod.half_time` enabled.
         """
@@ -98,7 +121,7 @@ class TimingPoint:
             self.kiai_mode,
         )
 
-    def double_time(self):
+    def double_time(self) -> "TimingPoint":
         """The ``TimingPoint`` as it would appear with
         :data:`~slider.mod.Mod.double_time` enabled.
         """
@@ -114,7 +137,7 @@ class TimingPoint:
         )
 
     @lazyval
-    def bpm(self):
+    def bpm(self) -> int | None:
         """The bpm of this timing point.
 
         If this is an inherited timing point this value will be None.
@@ -124,7 +147,7 @@ class TimingPoint:
             return None
         return round(60000 / ms_per_beat)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.parent is None:
             inherited = "inherited "
         else:
@@ -135,7 +158,7 @@ class TimingPoint:
         )
 
     @classmethod
-    def parse(cls, data, parent):
+    def parse(cls, data: str, parent: "TimingPoint" | None) -> "TimingPoint":
         """Parse a TimingPoint object from a line in a ``.osu`` file.
 
         Parameters
@@ -221,7 +244,7 @@ class TimingPoint:
             kiai_mode=kiai_mode,
         )
 
-    def pack(self):
+    def pack(self) -> str:
         """The string representing this timing point used in ``.osu`` file,
         without trailing ``\\n``.
 
@@ -279,13 +302,13 @@ class HitObject:
     # hitobject subclasses.
     def __init__(
         self,
-        position,
-        time,
-        hitsound,
-        addition="0:0:0:0:",
-        new_combo=False,
-        combo_skip=0,
-    ):
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        addition: str = "0:0:0:0:",
+        new_combo: bool = False,
+        combo_skip: int = 0,
+    ) -> None:
         self.position = position
         self.time = time
         self.hitsound = hitsound
@@ -303,7 +326,7 @@ class HitObject:
             f" {self.time.total_seconds() * 1000:g}ms>"
         )
 
-    def _time_modify(self, coefficient):
+    def _time_modify(self, coefficient: float) -> "HitObject":
         """Modify this ``HitObject`` by multiplying time related attributes
         by the ``coefficient``.
 
@@ -318,16 +341,16 @@ class HitObject:
             The modified hit object.
         """
         time_related_attributes = self.time_related_attributes
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         for name in inspect.signature(type(self)).parameters:
             value = getattr(self, name)
             if name in time_related_attributes:
                 value *= coefficient
             kwargs[name] = value
 
-        return type(self)(**kwargs)
+        return cast(HitObject, type(self)(**kwargs))
 
-    def _get_type_bits(self):
+    def _get_type_bits(self) -> int:
         # bit numbers below are zero indexed.
 
         # type code (bits number 0, 1, 3, and 7)
@@ -370,19 +393,25 @@ class HitObject:
         if self.hr_enabled:
             return self
 
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         for name in inspect.signature(type(self)).parameters:
             value = getattr(self, name)
             if name == "position":
                 value = Position(value.x, 384 - value.y)
             kwargs[name] = value
 
-        obj = type(self)(**kwargs)
+        obj = cast(HitObject, type(self)(**kwargs))
         obj.hr_enabled = True
         return obj
 
     @classmethod
-    def parse(cls, data, timing_points, slider_multiplier, slider_tick_rate):
+    def parse(
+        cls,
+        data: str,
+        timing_points: Sequence[TimingPoint],
+        slider_multiplier: float,
+        slider_tick_rate: float,
+    ) -> "HitObject":
         """Parse a HitObject object from a line in a ``.osu`` file.
 
         Parameters
@@ -408,7 +437,7 @@ class HitObject:
             Raised when ``data`` does not describe a ``HitObject`` object.
         """
         try:
-            x, y, time, type_, hitsound, *rest = data.split(",")
+            x_raw, y_raw, time_raw, type_raw, hitsound_raw, *rest = data.split(",")
         except ValueError:
             raise ValueError(f"not enough elements in line, got {data!r}")
 
@@ -421,54 +450,66 @@ class HitObject:
             # dfeeb456/osu.Game/Rulesets/Objects/Legacy/ConvertHitObjectParser.
             # cs#L49), so we're still matching in-game positions even though we
             # technically lose precision from the .osu file by casting.
-            x = int(float(x))
+            x = int(float(x_raw))
         except ValueError:
-            raise ValueError(f"x should be an int, got {x!r}")
+            raise ValueError(f"x should be an int, got {x_raw!r}")
 
         try:
-            y = int(float(y))
+            y = int(float(y_raw))
         except ValueError:
-            raise ValueError(f"y should be an int, got {y!r}")
+            raise ValueError(f"y should be an int, got {y_raw!r}")
 
         try:
-            time = timedelta(milliseconds=int(time))
+            time_ms = int(time_raw)
         except ValueError:
-            raise ValueError(f"type should be an int, got {time!r}")
+            raise ValueError(f"time should be an int, got {time_raw!r}")
+        time = timedelta(milliseconds=time_ms)
 
         try:
-            type_ = int(type_)
+            type_code = int(type_raw)
         except ValueError:
-            raise ValueError(f"type should be an int, got {type_!r}")
+            raise ValueError(f"type should be an int, got {type_raw!r}")
 
         try:
-            hitsound = int(hitsound)
+            hitsound = int(hitsound_raw)
         except ValueError:
-            raise ValueError(f"hitsound should be an int, got {hitsound!r}")
+            raise ValueError(f"hitsound should be an int, got {hitsound_raw!r}")
 
-        if type_ & Circle.type_code:
-            parse = Circle._parse
-        elif type_ & Slider.type_code:
-            parse = partial(
-                Slider._parse,
-                timing_points=timing_points,
-                slider_multiplier=slider_multiplier,
-                slider_tick_rate=slider_tick_rate,
+        parser: Callable[
+            [Position, timedelta, int, bool, int, Sequence[str]],
+            HitObject,
+        ]
+
+        if type_code & Circle.type_code:
+            parser = Circle._parse
+        elif type_code & Slider.type_code:
+            parser = cast(
+                Callable[
+                    [Position, timedelta, int, bool, int, Sequence[str]],
+                    HitObject,
+                ],
+                partial(
+                    Slider._parse,
+                    timing_points=timing_points,
+                    slider_multiplier=slider_multiplier,
+                    slider_tick_rate=slider_tick_rate,
+                ),
             )
-        elif type_ & Spinner.type_code:
-            parse = Spinner._parse
-        elif type_ & HoldNote.type_code:
-            parse = HoldNote._parse
+        elif type_code & Spinner.type_code:
+            parser = Spinner._parse
+        elif type_code & HoldNote.type_code:
+            parser = HoldNote._parse
         else:
-            raise ValueError(f"unknown type code {type_!r}")
+            raise ValueError(f"unknown type code {type_code!r}")
 
         # new combo info is in second bit (0-indexed)
-        new_combo = bool(type_ & 0b00000100)
+        new_combo = bool(type_code & 0b00000100)
         # 3 bit int for combo skip is held in 4th, 5th, and 6th bits
-        combo_skip = (type_ & 0b01110000) >> 4
-        return parse(Position(x, y), time, hitsound, new_combo, combo_skip, rest)
+        combo_skip = (type_code & 0b01110000) >> 4
+        return parser(Position(x, y), time, hitsound, new_combo, combo_skip, rest)
 
     @abstractmethod
-    def pack(self):
+    def pack(self) -> str:
         """The string representing this hit element used in .osu file,
         without trailing ``\\n``.
 
@@ -507,13 +548,23 @@ class Circle(HitObject):
     type_code = 1
 
     @classmethod
-    def _parse(cls, position, time, hitsound, new_combo, combo_skip, rest):
-        if len(rest) > 1:
-            raise ValueError("extra data: {rest!r}")
+    def _parse(
+        cls,
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        new_combo: bool,
+        combo_skip: int,
+        rest: Sequence[str],
+    ) -> "Circle":
+        rest_values = list(rest)
+        if len(rest_values) > 1:
+            raise ValueError(f"extra data: {rest_values!r}")
 
-        return cls(position, time, hitsound, *rest, new_combo, combo_skip)
+        addition = rest_values[0] if rest_values else "0:0:0:0:"
+        return cls(position, time, hitsound, addition, new_combo, combo_skip)
 
-    def pack(self):
+    def pack(self) -> str:
         """The string representing this circle hit element used in ``.osu`` file,
         without trailing ``\\n``.
 
@@ -568,35 +619,47 @@ class Spinner(HitObject):
 
     def __init__(
         self,
-        position,
-        time,
-        hitsound,
-        end_time,
-        addition="0:0:0:0:",
-        new_combo=False,
-        combo_skip=0,
-    ):
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        end_time: timedelta,
+        addition: str = "0:0:0:0:",
+        new_combo: bool = False,
+        combo_skip: int = 0,
+    ) -> None:
         super().__init__(position, time, hitsound, addition, new_combo, combo_skip)
         self.end_time = end_time
 
     @classmethod
-    def _parse(cls, position, time, hitsound, new_combo, combo_skip, rest):
+    def _parse(
+        cls,
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        new_combo: bool,
+        combo_skip: int,
+        rest: Sequence[str],
+    ) -> "Spinner":
+        rest_values = list(rest)
         try:
-            end_time, *rest = rest
+            end_time_raw, *rest_values = rest_values
         except ValueError:
             raise ValueError("missing end_time")
 
         try:
-            end_time = timedelta(milliseconds=int(end_time))
+            end_time_ms = int(end_time_raw)
         except ValueError:
-            raise ValueError(f"end_time should be an int, got {end_time!r}")
+            raise ValueError(f"end_time should be an int, got {end_time_raw!r}")
 
-        if len(rest) > 1:
-            raise ValueError(f"extra data: {rest!r}")
+        end_time = timedelta(milliseconds=end_time_ms)
 
-        return cls(position, time, hitsound, end_time, *rest, new_combo, combo_skip)
+        if len(rest_values) > 1:
+            raise ValueError(f"extra data: {rest_values!r}")
 
-    def pack(self):
+        addition = rest_values[0] if rest_values else "0:0:0:0:"
+        return cls(position, time, hitsound, end_time, addition, new_combo, combo_skip)
+
+    def pack(self) -> str:
         """The string representing this spinner hit element used in ``.osu`` file,
         without trailing ``\\n``.
 
@@ -671,23 +734,23 @@ class Slider(HitObject):
 
     def __init__(
         self,
-        position,
-        time,
-        end_time,
-        hitsound,
-        curve,
-        repeat,
-        length,
-        ticks,
-        num_beats,
-        tick_rate,
-        ms_per_beat,
-        edge_sounds,
-        edge_additions,
-        addition="0:0:0:0:",
-        new_combo=False,
-        combo_skip=0,
-    ):
+        position: Position,
+        time: timedelta,
+        end_time: timedelta,
+        hitsound: int,
+        curve: Curve,
+        repeat: int,
+        length: float,
+        ticks: int,
+        num_beats: float,
+        tick_rate: float,
+        ms_per_beat: float,
+        edge_sounds: Sequence[int],
+        edge_additions: Sequence[str],
+        addition: str = "0:0:0:0:",
+        new_combo: bool = False,
+        combo_skip: int = 0,
+    ) -> None:
         super().__init__(position, time, hitsound, addition, new_combo, combo_skip)
         self.end_time = end_time
         self.curve = curve
@@ -697,11 +760,11 @@ class Slider(HitObject):
         self.num_beats = num_beats
         self.tick_rate = tick_rate
         self.ms_per_beat = ms_per_beat
-        self.edge_sounds = edge_sounds
-        self.edge_additions = edge_additions
+        self.edge_sounds: List[int] = list(edge_sounds)
+        self.edge_additions: List[str] = list(edge_additions)
 
     @lazyval
-    def tick_points(self):
+    def tick_points(self) -> List[Point]:
         """The position and time of each slider tick."""
         repeat = self.repeat
 
@@ -710,7 +773,7 @@ class Slider(HitObject):
 
         curve = self.curve
 
-        pre_repeat_ticks = []
+        pre_repeat_ticks: List[Point] = []
         append_tick = pre_repeat_ticks.append
 
         beats_per_repeat = self.num_beats / repeat
@@ -723,11 +786,16 @@ class Slider(HitObject):
         timediff = repeat_duration
         append_tick(Point(pos.x, pos.y, time + timediff))
 
-        repeat_ticks = [
-            Point(p.x, p.y, pre_repeat_tick.offset)
-            for pre_repeat_tick, p in zip(
-                pre_repeat_ticks, chain(pre_repeat_ticks[-2::-1], [self.position])
-            )
+        mirrored_points: Sequence[Union[Point, Position]] = cast(
+            Sequence[Union[Point, Position]],
+            list(chain(pre_repeat_ticks[-2::-1], [self.position])),
+        )
+        mirrored_positions: List[Position] = [
+            Position(point.x, point.y) for point in mirrored_points
+        ]
+        repeat_ticks: List[Point] = [
+            Point(pos.x, pos.y, pre_repeat_tick.offset)
+            for pre_repeat_tick, pos in zip(pre_repeat_ticks, mirrored_positions)
         ]
 
         tick_sequences = islice(
@@ -742,7 +810,7 @@ class Slider(HitObject):
         )
 
     @lazyval
-    def true_tick_points(self):
+    def true_tick_points(self) -> List[Point]:
         """The position and time of each slider tick. This accounts for
         the legacy last tick offset.
 
@@ -768,14 +836,14 @@ class Slider(HitObject):
         return tick_points
 
     @lazyval
-    def hard_rock(self):
+    def hard_rock(self) -> "Slider":
         """The ``HitObject`` as it would appear with
         :data:`~slider.mod.Mod.hard_rock` enabled.
         """
         if self.hr_enabled:
             return self
 
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         for name in inspect.signature(type(self)).parameters:
             value = getattr(self, name)
             if name == "position":
@@ -783,27 +851,29 @@ class Slider(HitObject):
             elif name == "curve":
                 value = value.hard_rock
             kwargs[name] = value
-        obj = type(self)(**kwargs)
+        obj = cast(Slider, type(self)(**kwargs))
         obj.hr_enabled = True
         return obj
 
     @classmethod
     def _parse(
         cls,
-        position,
-        time,
-        hitsound,
-        new_combo,
-        combo_skip,
-        rest,
-        timing_points,
-        slider_multiplier,
-        slider_tick_rate,
-    ):
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        new_combo: bool,
+        combo_skip: int,
+        rest: Sequence[str],
+        *,
+        timing_points: Sequence[TimingPoint],
+        slider_multiplier: float,
+        slider_tick_rate: float,
+    ) -> "Slider":
+        rest_list = list(rest)
         try:
-            group_1, *rest = rest
+            group_1, *rest_list = rest_list
         except ValueError:
-            raise ValueError(f"missing required slider data in {rest!r}")
+            raise ValueError(f"missing required slider data in {rest_list!r}")
 
         try:
             slider_type, *raw_points = group_1.split("|")
@@ -816,75 +886,77 @@ class Slider(HitObject):
         points = [position]
         for point in raw_points:
             try:
-                x, y = point.split(":")
+                x_str, y_str = point.split(":")
             except ValueError:
                 raise ValueError(
                     f"expected points in the form x:y, got {point!r}",
                 )
 
             try:
-                x = int(x)
+                x_coord = int(x_str)
             except ValueError:
-                raise ValueError("x should be an int, got {x!r}")
+                raise ValueError(f"x should be an int, got {x_str!r}")
 
             try:
-                y = int(y)
+                y_coord = int(y_str)
             except ValueError:
-                raise ValueError("y should be an int, got {y!r}")
+                raise ValueError(f"y should be an int, got {y_str!r}")
 
-            points.append(Position(x, y))
+            points.append(Position(x_coord, y_coord))
 
         try:
-            repeat, *rest = rest
+            repeat_raw, *rest_list = rest_list
         except ValueError:
-            raise ValueError(f"missing repeat in {rest!r}")
+            raise ValueError(f"missing repeat in {rest_list!r}")
 
         try:
-            repeat = int(repeat)
+            repeat = int(repeat_raw)
         except ValueError:
-            raise ValueError(f"repeat should be an int, got {repeat!r}")
+            raise ValueError(f"repeat should be an int, got {repeat_raw!r}")
 
         try:
-            pixel_length, *rest = rest
+            pixel_length_raw, *rest_list = rest_list
         except ValueError:
-            raise ValueError(f"missing pixel_length in {rest!r}")
+            raise ValueError(f"missing pixel_length in {rest_list!r}")
 
         try:
-            pixel_length = float(pixel_length)
+            pixel_length = float(pixel_length_raw)
         except ValueError:
             raise ValueError(
-                f"pixel_length should be a float, got {pixel_length!r}",
+                f"pixel_length should be a float, got {pixel_length_raw!r}",
             )
 
         try:
-            raw_edge_sounds_grouped, *rest = rest
+            raw_edge_sounds_grouped, *rest_list = rest_list
         except ValueError:
             raw_edge_sounds_grouped = ""
 
         raw_edge_sounds = raw_edge_sounds_grouped.split("|")
-        edge_sounds = []
+        edge_sounds: List[int] = []
         if raw_edge_sounds != [""]:
             for edge_sound in raw_edge_sounds:
                 try:
-                    edge_sound = int(edge_sound)
+                    edge_sound_value = int(edge_sound)
                 except ValueError:
                     raise ValueError(
                         f"edge_sound should be an int, got {edge_sound!r}",
                     )
-                edge_sounds.append(edge_sound)
+                edge_sounds.append(edge_sound_value)
 
         try:
-            edge_additions_grouped, *rest = rest
+            edge_additions_grouped, *rest_list = rest_list
         except ValueError:
             edge_additions_grouped = ""
 
         if edge_additions_grouped:
-            edge_additions = edge_additions_grouped.split("|")
+            edge_additions_list: List[str] = edge_additions_grouped.split("|")
         else:
-            edge_additions = []
+            edge_additions_list = []
 
-        if len(rest) > 1:
-            raise ValueError(f"extra data: {rest!r}")
+        if len(rest_list) > 1:
+            raise ValueError(f"extra data: {rest_list!r}")
+
+        addition = rest_list[0] if rest_list else "0:0:0:0:"
 
         for tp in reversed(timing_points):
             if tp.offset <= time:
@@ -922,13 +994,13 @@ class Slider(HitObject):
             slider_tick_rate,
             ms_per_beat,
             edge_sounds,
-            edge_additions,
-            *rest,
+            edge_additions_list,
+            addition,
             new_combo=new_combo,
             combo_skip=combo_skip,
         )
 
-    def pack(self):
+    def pack(self) -> str:
         """The string representing this slider hit element used in ``.osu`` file,
         without trailing ``\\n``.
 
@@ -991,36 +1063,47 @@ class HoldNote(HitObject):
 
     def __init__(
         self,
-        position,
-        time,
-        hitsound,
-        end_time,
-        addition="0:0:0:0:",
-        new_combo=False,
-        combo_skip=0,
-    ):
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        end_time: timedelta,
+        addition: str = "0:0:0:0:",
+        new_combo: bool = False,
+        combo_skip: int = 0,
+    ) -> None:
         super().__init__(position, time, hitsound, addition, new_combo, combo_skip)
         self.end_time = end_time
 
     @classmethod
-    def _parse(cls, position, time, hitsound, new_combo, combo_skip, rest):
+    def _parse(
+        cls,
+        position: Position,
+        time: timedelta,
+        hitsound: int,
+        new_combo: bool,
+        combo_skip: int,
+        rest: Sequence[str],
+    ) -> "HoldNote":
+        rest_values = list(rest)
         try:
-            end_time, *rest = rest
+            end_time_raw, *rest_values = rest_values
         except ValueError:
             raise ValueError("missing end_time")
 
-        if ":" in end_time:
+        if ":" in end_time_raw:
             # Some maps seem to have extra data, e.g. "15495:0:0:0:0:"
-            end_time, *_ = end_time.split(":")
+            end_time_raw, *_ = end_time_raw.split(":")
 
         try:
-            end_time = timedelta(milliseconds=int(end_time))
+            end_time_ms = int(end_time_raw)
         except ValueError:
-            raise ValueError(f"end_time should be an int, got {end_time!r}")
-        if len(rest) > 1:
-            raise ValueError("extra data: {rest!r}")
+            raise ValueError(f"end_time should be an int, got {end_time_raw!r}")
+        end_time = timedelta(milliseconds=end_time_ms)
+        if len(rest_values) > 1:
+            raise ValueError(f"extra data: {rest_values!r}")
 
-        return cls(position, time, hitsound, end_time, new_combo, combo_skip, *rest)
+        addition = rest_values[0] if rest_values else "0:0:0:0:"
+        return cls(position, time, hitsound, end_time, addition, new_combo, combo_skip)
 
     def pack(self):
         """The string representing this HoldNote hit element used in ``.osu`` file,
@@ -1056,7 +1139,31 @@ class HoldNote(HitObject):
         )
 
 
-def _get_as_str(groups, section, field, default=no_default):
+@overload
+def _get_as_str(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+) -> str:
+    ...
+
+
+@overload
+def _get_as_str(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T,
+) -> str | T:
+    ...
+
+
+def _get_as_str(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T | NoDefaultType = no_default,
+) -> str | T:
     """Lookup a field from a given section.
 
     Parameters
@@ -1091,7 +1198,31 @@ def _get_as_str(groups, section, field, default=no_default):
         return default
 
 
-def _get_as_int(groups, section, field, default=no_default):
+@overload
+def _get_as_int(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+) -> int:
+    ...
+
+
+@overload
+def _get_as_int(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T,
+) -> int | T:
+    ...
+
+
+def _get_as_int(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T | NoDefaultType = no_default,
+) -> int | T:
     """Lookup a field from a given section and parse it as an integer.
 
     Parameters
@@ -1114,7 +1245,7 @@ def _get_as_int(groups, section, field, default=no_default):
     v = _get_as_str(groups, section, field, default)
 
     if v is default:
-        return v
+        return cast(T, v)
 
     try:
         return int(v)
@@ -1124,7 +1255,31 @@ def _get_as_int(groups, section, field, default=no_default):
         )
 
 
-def _get_as_int_list(groups, section, field, default=no_default):
+@overload
+def _get_as_int_list(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+) -> List[int]:
+    ...
+
+
+@overload
+def _get_as_int_list(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T,
+) -> List[int] | T:
+    ...
+
+
+def _get_as_int_list(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T | NoDefaultType = no_default,
+) -> List[int] | T:
     """Lookup a field from a given section and parse it as an integer list.
 
     Parameters
@@ -1147,7 +1302,7 @@ def _get_as_int_list(groups, section, field, default=no_default):
     v = _get_as_str(groups, section, field, default)
 
     if v is default:
-        return v
+        return cast(T, v)
 
     if not v:
         return []
@@ -1161,7 +1316,31 @@ def _get_as_int_list(groups, section, field, default=no_default):
         )
 
 
-def _get_as_float(groups, section, field, default=no_default):
+@overload
+def _get_as_float(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+) -> float:
+    ...
+
+
+@overload
+def _get_as_float(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T,
+) -> float | T:
+    ...
+
+
+def _get_as_float(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T | NoDefaultType = no_default,
+) -> float | T:
     """Lookup a field from a given section and parse it as an float
 
     Parameters
@@ -1184,7 +1363,7 @@ def _get_as_float(groups, section, field, default=no_default):
     v = _get_as_str(groups, section, field, default)
 
     if v is default:
-        return v
+        return cast(T, v)
 
     try:
         return float(v)
@@ -1194,7 +1373,31 @@ def _get_as_float(groups, section, field, default=no_default):
         )
 
 
-def _get_as_bool(groups, section, field, default=no_default):
+@overload
+def _get_as_bool(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+) -> bool:
+    ...
+
+
+@overload
+def _get_as_bool(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T,
+) -> bool | T:
+    ...
+
+
+def _get_as_bool(
+    groups: Mapping[str, Mapping[str, str]],
+    section: str,
+    field: str,
+    default: T | NoDefaultType = no_default,
+) -> bool | T:
     """Lookup a field from a given section and parse it as an float
 
     Parameters
@@ -1217,7 +1420,7 @@ def _get_as_bool(groups, section, field, default=no_default):
     v = _get_as_str(groups, section, field, default)
 
     if v is default:
-        return v
+        return cast(T, v)
 
     try:
         # cast to int then to bool because '0' is still True; bools are written
@@ -1229,7 +1432,12 @@ def _get_as_bool(groups, section, field, default=no_default):
         )
 
 
-def _invalid_to_default(field: str, field_value, expected_type, default=no_default):
+def _invalid_to_default(
+    field: str,
+    field_value: Any,
+    expected_type: type[Any] | tuple[type[Any], ...],
+    default: Any | NoDefaultType = no_default,
+) -> Any:
     """
     Replaces the field_value with default value if it is invalid
     (missing or of incorrect type).
@@ -1268,7 +1476,11 @@ def _invalid_to_default(field: str, field_value, expected_type, default=no_defau
     return default
 
 
-def _pack_timedelta(field: str, td: timedelta, default=no_default):
+def _pack_timedelta(
+    field: str,
+    td: timedelta,
+    default: timedelta | NoDefaultType = no_default,
+) -> str:
     """Pack timedelta to a string.
 
     Parameters
@@ -1294,7 +1506,11 @@ def _pack_timedelta(field: str, td: timedelta, default=no_default):
     return str(td // timedelta(milliseconds=1))
 
 
-def _pack_bool(field: str, bool_in: bool, default=no_default):
+def _pack_bool(
+    field: str,
+    bool_in: bool,
+    default: bool | NoDefaultType = no_default,
+) -> str:
     """Pack bool to a string.
 
     Parameters
@@ -1320,7 +1536,11 @@ def _pack_bool(field: str, bool_in: bool, default=no_default):
     return "1" if bool_in else "0"
 
 
-def _pack_int(field: str, int_in: int, default=no_default):
+def _pack_int(
+    field: str,
+    int_in: int,
+    default: int | NoDefaultType = no_default,
+) -> str:
     """Pack int to a string.
 
     Parameters
@@ -1346,7 +1566,11 @@ def _pack_int(field: str, int_in: int, default=no_default):
     return str(int(int_in))
 
 
-def _pack_float(field: str, float_in: float | int, default=no_default) -> str:
+def _pack_float(
+    field: str,
+    float_in: float | int,
+    default: float | int | NoDefaultType = no_default,
+) -> str:
     """Pack float to a string. If the float number can be converted to
     int without loss, return the packed string of the converted int.
 
@@ -1376,7 +1600,11 @@ def _pack_float(field: str, float_in: float | int, default=no_default) -> str:
     return str(int_) if int_ == float_in else str(float_in)
 
 
-def _pack_str(field: str, str_in: str, default=no_default):
+def _pack_str(
+    field: str,
+    str_in: str,
+    default: str | NoDefaultType = no_default,
+) -> str:
     """Pack string to a string, with validity check.
 
     Parameters
@@ -1402,7 +1630,11 @@ def _pack_str(field: str, str_in: str, default=no_default):
     return str_in
 
 
-def _pack_int_enum(field: str, enum_in: IntEnum, default=no_default):
+def _pack_int_enum(
+    field: str,
+    enum_in: IntEnum,
+    default: IntEnum | NoDefaultType = no_default,
+) -> str:
     """Pack IntEnum to a string.
 
     Parameters
@@ -1428,7 +1660,12 @@ def _pack_int_enum(field: str, enum_in: IntEnum, default=no_default):
     return str(int(enum_in))
 
 
-def _pack_str_list(field: str, list_str: list, sep: str = " ", default=no_default):
+def _pack_str_list(
+    field: str,
+    list_str: Sequence[str],
+    sep: str = " ",
+    default: Sequence[str] | NoDefaultType = no_default,
+) -> str:
     """Pack a list of string to a string, with `sep` as separator
     between elements.
 
@@ -1454,11 +1691,16 @@ def _pack_str_list(field: str, list_str: list, sep: str = " ", default=no_defaul
         Raised when ``list_str`` is not a list of str
         and default is not available.
     """
-    list_str = _invalid_to_default(field, list_str, list, default)
+    list_str = cast(List[str], _invalid_to_default(field, list_str, list, default))
     return sep.join(list_str)
 
 
-def _pack_timedelta_list(field: str, list_td: list, sep: str = ",", default=no_default):
+def _pack_timedelta_list(
+    field: str,
+    list_td: Sequence[timedelta],
+    sep: str = ",",
+    default: Sequence[timedelta] | NoDefaultType = no_default,
+) -> str:
     """Pack a list of timedelta to a string, with `sep` as separator
     between elements.
 
@@ -1484,11 +1726,16 @@ def _pack_timedelta_list(field: str, list_td: list, sep: str = ",", default=no_d
         Raised when ``list_td`` is not a list of timedelta
         and default is not available.
     """
-    list_td = _invalid_to_default(field, list_td, list, default)
+    list_td = cast(List[timedelta], _invalid_to_default(field, list_td, list, default))
     return sep.join(str(td // timedelta(milliseconds=1)) for td in list_td)
 
 
-def _moving_average_by_time(times, data, delta, num):
+def _moving_average_by_time(
+    times: np.ndarray,
+    data: np.ndarray,
+    delta: float | int,
+    num: int,
+) -> Tuple[np.ndarray, np.ndarray]:
     """Take the moving average of some values and sample it at regular
     frequencies.
 
@@ -1558,14 +1805,14 @@ class _DifficultyHitObject:
         The previous difficulty hit object.
     """
 
-    decay_base = 0.3, 0.15
+    decay_base: Tuple[float, float] = (0.3, 0.15)
 
     almost_diameter = 90
 
     stream_spacing = 110
     single_spacing = 125
 
-    weight_scaling = 1400, 26.25
+    weight_scaling: Tuple[float, float] = (1400, 26.25)
 
     circle_size_buffer_threshold = 30
 
@@ -1576,7 +1823,12 @@ class _DifficultyHitObject:
         speed = 0
         aim = 1
 
-    def __init__(self, hit_object, radius, previous=None):
+    def __init__(
+        self,
+        hit_object: HitObject,
+        radius: float,
+        previous: "_DifficultyHitObject" | None = None,
+    ) -> None:
         self.hit_object = hit_object
 
         scaling_factor = 52 / radius
@@ -1597,14 +1849,18 @@ class _DifficultyHitObject:
         )
 
         if previous is None:
-            self.strains = 0, 0
+            self.strains = (0.0, 0.0)
         else:
             self.strains = (
                 self._calculate_strain(previous, self.Strain.speed),
                 self._calculate_strain(previous, self.Strain.aim),
             )
 
-    def _calculate_strain(self, previous, strain):
+    def _calculate_strain(
+        self,
+        previous: "_DifficultyHitObject",
+        strain: "_DifficultyHitObject.Strain",
+    ) -> float:
         result = 0
         scaling = self.weight_scaling[strain]
 
@@ -1619,7 +1875,7 @@ class _DifficultyHitObject:
         decay = self.decay_base[strain] ** (time_elapsed / 1000)
         return previous.strains[strain] * decay + result
 
-    def _distance(self, previous):
+    def _distance(self, previous: "_DifficultyHitObject") -> float:
         """The magnitude of distance between the current object and the
         previous.
 
@@ -1635,9 +1891,13 @@ class _DifficultyHitObject:
         """
         start = self.normalized_start
         end = previous.normalized_end
-        return np.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2)
+        return float(np.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2))
 
-    def _spacing_weight(self, distance, strain):
+    def _spacing_weight(
+        self,
+        distance: float,
+        strain: "_DifficultyHitObject.Strain",
+    ) -> float:
         if strain == self.Strain.speed:
             if distance > self.single_spacing:
                 return 2.5
@@ -1746,42 +2006,42 @@ class Beatmap:
     def __init__(
         self,
         *,
-        format_version,
-        audio_filename,
-        audio_lead_in,
-        preview_time,
-        countdown,
-        sample_set,
-        stack_leniency,
-        mode,
-        letterbox_in_breaks,
-        widescreen_storyboard,
-        bookmarks,
-        distance_spacing,
-        beat_divisor,
-        grid_size,
-        timeline_zoom,
-        title,
-        title_unicode,
-        artist,
-        artist_unicode,
-        creator,
-        version,
-        source,
-        tags,
-        beatmap_id,
-        beatmap_set_id,
-        hp_drain_rate,
-        circle_size,
-        overall_difficulty,
-        approach_rate,
-        slider_multiplier,
-        slider_tick_rate,
-        background,
-        videos,
-        timing_points,
-        hit_objects,
-    ):
+        format_version: int,
+        audio_filename: str,
+        audio_lead_in: timedelta,
+        preview_time: timedelta,
+        countdown: bool,
+        sample_set: str,
+        stack_leniency: float,
+        mode: GameMode,
+        letterbox_in_breaks: bool,
+        widescreen_storyboard: bool,
+        bookmarks: Sequence[timedelta],
+        distance_spacing: float,
+        beat_divisor: int,
+        grid_size: int,
+        timeline_zoom: float,
+        title: str,
+        title_unicode: str,
+        artist: str,
+        artist_unicode: str,
+        creator: str,
+        version: str,
+        source: str | None,
+        tags: Sequence[str],
+        beatmap_id: int | None,
+        beatmap_set_id: int | None,
+        hp_drain_rate: float,
+        circle_size: float,
+        overall_difficulty: float,
+        approach_rate: float,
+        slider_multiplier: float,
+        slider_tick_rate: float,
+        background: str | None,
+        videos: Sequence[str],
+        timing_points: Sequence[TimingPoint],
+        hit_objects: Sequence[HitObject],
+    ) -> None:
         self.format_version = format_version
         self.audio_filename = audio_filename
         self.audio_lead_in = audio_lead_in
@@ -1792,7 +2052,7 @@ class Beatmap:
         self.mode = mode
         self.letterbox_in_breaks = letterbox_in_breaks
         self.widescreen_storyboard = widescreen_storyboard
-        self.bookmarks = bookmarks
+        self.bookmarks = list(bookmarks)
         self.distance_spacing = distance_spacing
         self.beat_divisor = beat_divisor
         self.grid_size = grid_size
@@ -1804,7 +2064,7 @@ class Beatmap:
         self.creator = creator
         self.version = version
         self.source = source
-        self.tags = tags
+        self.tags = list(tags)
         self.beatmap_id = beatmap_id
         self.beatmap_set_id = beatmap_set_id
         self.hp_drain_rate = hp_drain_rate
@@ -1814,25 +2074,34 @@ class Beatmap:
         self.slider_multiplier = slider_multiplier
         self.slider_tick_rate = slider_tick_rate
         self.background = background
-        self.videos = videos
-        self.timing_points = timing_points
-        self._hit_objects = hit_objects
+        self.videos = list(videos)
+        self.timing_points = list(timing_points)
+        self._hit_objects: List[HitObject] = list(hit_objects)
         # cache hit object stacking at different ar and cs values
-        self._hit_objects_with_stacking = {}
+        self._hit_objects_with_stacking: Dict[
+            Tuple[float, float], Tuple[HitObject, ...]
+        ] = {}
 
         # cache the stars with different mod combinations
-        self._stars_cache = {}
-        self._aim_stars_cache = {}
-        self._speed_stars_cache = {}
-        self._rhythm_awkwardness_cache = {}
+        self._stars_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
+        self._aim_stars_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
+        self._speed_stars_cache: Dict[Tuple[bool, bool, bool, bool], float] = {}
+        self._rhythm_awkwardness_cache: Dict[
+            Tuple[bool, bool, bool, bool], float
+        ] = {}
 
     @property
-    def display_name(self):
+    def display_name(self) -> str:
         """The name of the map as it appears in game."""
         return f"{self.artist} - {self.title} [{self.version}]"
 
     @memoize
-    def bpm_min(self, *, half_time=False, double_time=False):
+    def bpm_min(
+        self,
+        *,
+        half_time: bool = False,
+        double_time: bool = False,
+    ) -> float:
         """The minimum BPM in this beatmap.
 
         Parameters
@@ -1855,7 +2124,12 @@ class Beatmap:
         return bpm
 
     @memoize
-    def bpm_max(self, *, half_time=False, double_time=False):
+    def bpm_max(
+        self,
+        *,
+        half_time: bool = False,
+        double_time: bool = False,
+    ) -> float:
         """The maximum BPM in this beatmap.
 
         Parameters
@@ -1877,7 +2151,7 @@ class Beatmap:
             bpm *= 0.75
         return bpm
 
-    def hp(self, *, easy=False, hard_rock=False):
+    def hp(self, *, easy: bool = False, hard_rock: bool = False) -> float:
         """Compute the Health Drain (HP) value for different mods.
 
         Parameters
@@ -1899,7 +2173,7 @@ class Beatmap:
             hp /= 2
         return hp
 
-    def cs(self, *, easy=False, hard_rock=False):
+    def cs(self, *, easy: bool = False, hard_rock: bool = False) -> float:
         """Compute the Circle Size (CS) value for different mods.
 
         Parameters
@@ -1921,7 +2195,14 @@ class Beatmap:
             cs /= 2
         return cs
 
-    def od(self, *, easy=False, hard_rock=False, half_time=False, double_time=False):
+    def od(
+        self,
+        *,
+        easy: bool = False,
+        hard_rock: bool = False,
+        half_time: bool = False,
+        double_time: bool = False,
+    ) -> float:
         """Compute the Overall Difficulty (OD) value for different mods.
 
         Parameters
@@ -1953,7 +2234,14 @@ class Beatmap:
 
         return od
 
-    def ar(self, *, easy=False, hard_rock=False, half_time=False, double_time=False):
+    def ar(
+        self,
+        *,
+        easy: bool = False,
+        hard_rock: bool = False,
+        half_time: bool = False,
+        double_time: bool = False,
+    ) -> float:
         """Compute the Approach Rate (AR) value for different mods.
 
         Parameters
@@ -1994,15 +2282,15 @@ class Beatmap:
     def hit_objects(
         self,
         *,
-        circles=True,
-        sliders=True,
-        spinners=True,
-        stacking=True,
-        easy=False,
-        hard_rock=False,
-        double_time=False,
-        half_time=False,
-    ):
+        circles: bool = True,
+        sliders: bool = True,
+        spinners: bool = True,
+        stacking: bool = True,
+        easy: bool = False,
+        hard_rock: bool = False,
+        double_time: bool = False,
+        half_time: bool = False,
+    ) -> Tuple[HitObject, ...]:
         """Retrieve hit_objects.
 
         Parameters
@@ -2034,7 +2322,7 @@ class Beatmap:
             parameter set.
         """
 
-        hit_objects = self._hit_objects
+        hit_objects: Sequence[HitObject] = self._hit_objects
 
         if hard_rock:
             hit_objects = [ob.hard_rock for ob in hit_objects]
@@ -2064,7 +2352,7 @@ class Beatmap:
         elif half_time:
             hit_objects = [ob.half_time for ob in hit_objects]
 
-        keep_classes = []
+        keep_classes: List[type[HitObject]] = []
         if spinners:
             keep_classes.append(Spinner)
         if circles:
@@ -2072,9 +2360,15 @@ class Beatmap:
         if sliders:
             keep_classes.append(Slider)
 
-        return tuple(ob for ob in hit_objects if isinstance(ob, tuple(keep_classes)))
+        keep_classes_tuple = tuple(keep_classes)
+        return tuple(ob for ob in hit_objects if isinstance(ob, keep_classes_tuple))
 
-    def _resolve_stacking(self, hit_objects, ar, cs):
+    def _resolve_stacking(
+        self,
+        hit_objects: Sequence[HitObject],
+        ar: float,
+        cs: float,
+    ) -> Tuple[HitObject, ...]:
         """
         Adjusts the hit objects to account for stacking in beatmap versions 6
         and up.
@@ -2095,19 +2389,19 @@ class Beatmap:
             stacking.
         """
         stack_threshold = ar_to_ms(ar) * self.stack_leniency
-        stack_threshold = timedelta(milliseconds=stack_threshold)
+        stack_threshold_td = timedelta(milliseconds=stack_threshold)
         stack_dist = 3
-        stack_height = {ob: 0 for ob in hit_objects}
-        # reverse list so it's easier to process
-        hit_objects = list(reversed(hit_objects))
+        hit_object_list = list(hit_objects)
+        stack_height: Dict[HitObject, int] = {ob: 0 for ob in hit_object_list}
+        hit_objects_reversed = list(reversed(hit_object_list))
 
-        for i, ob_i in enumerate(hit_objects):
+        for i, ob_i in enumerate(hit_objects_reversed):
 
             if stack_height[ob_i] != 0 or isinstance(ob_i, Spinner):
                 continue
 
             if isinstance(ob_i, Circle):
-                for n, ob_n in enumerate(hit_objects[i + 1 :], start=i + 1):
+                for n, ob_n in enumerate(hit_objects_reversed[i + 1 :], start=i + 1):
 
                     if isinstance(ob_n, Spinner):
                         continue
@@ -2117,7 +2411,7 @@ class Beatmap:
                     else:
                         end_time = ob_n.time
 
-                    if (ob_i.time - end_time) > stack_threshold:
+                    if (ob_i.time - end_time) > stack_threshold_td:
                         break
 
                     if (
@@ -2126,7 +2420,7 @@ class Beatmap:
                     ):
                         offset = stack_height[ob_i] - stack_height[ob_n] + 1
 
-                        for hj in hit_objects[i:n]:
+                        for hj in hit_objects_reversed[i:n]:
                             # For each object which was declared under this
                             # slider, we will offset it to appear *below*
                             # the slider end (rather than above).
@@ -2152,12 +2446,12 @@ class Beatmap:
             elif isinstance(ob_i, Slider):
                 # We have hit the first slider in a possible stack.
                 # From this point on, we ALWAYS stack positive regardless.
-                for n, ob_n in enumerate(hit_objects[i + 1 :], start=i + 1):
+                for n, ob_n in enumerate(hit_objects_reversed[i + 1 :], start=i + 1):
 
                     if isinstance(ob_n, Spinner):
                         continue
 
-                    if ob_i.time - ob_n.time > stack_threshold:
+                    if ob_i.time - ob_n.time > stack_threshold_td:
                         break
 
                     if isinstance(ob_n, Slider):
@@ -2169,22 +2463,24 @@ class Beatmap:
                         stack_height[ob_n] = stack_height[ob_i] + 1
                         ob_i = ob_n
 
-        # reverse list again so it's normal
-        hit_objects = list(reversed(hit_objects))
-
-        # apply stacking
+        # apply stacking to original ordering
         radius = circle_radius(cs)
         stack_offset = radius / 10
 
-        for hit_object in hit_objects:
+        for hit_object in hit_object_list:
             offset = stack_offset * stack_height[hit_object]
             p = hit_object.position
             p_new = Position(p.x - offset, p.y - offset)
             hit_object.position = p_new
 
-        return hit_objects
+        return tuple(hit_object_list)
 
-    def _resolve_stacking_old(self, hit_objects, ar, cs):
+    def _resolve_stacking_old(
+        self,
+        hit_objects: Sequence[HitObject],
+        ar: float,
+        cs: float,
+    ) -> Tuple[HitObject, ...]:
         """
         Adjusts the hit objects to account for stacking in beatmap versions 5
         and below.
@@ -2205,10 +2501,11 @@ class Beatmap:
             stacking.
         """
         stack_threshold = ar_to_ms(ar) * self.stack_leniency
-        stack_threshold = timedelta(milliseconds=stack_threshold)
+        stack_threshold_td = timedelta(milliseconds=stack_threshold)
         stack_dist = 3
-        stack_height = {ob: 0 for ob in hit_objects}
-        for i, ob_i in enumerate(hit_objects):
+        hit_object_list = list(hit_objects)
+        stack_height: Dict[HitObject, int] = {ob: 0 for ob in hit_object_list}
+        for i, ob_i in enumerate(hit_object_list):
 
             if stack_height[ob_i] != 0 and not isinstance(ob_i, Slider):
                 continue
@@ -2219,9 +2516,9 @@ class Beatmap:
                 start_time = ob_i.time
             slider_stack = 0
 
-            for j, ob_j in enumerate(hit_objects[i + 1 :], start=i + 1):
+            for j, ob_j in enumerate(hit_object_list[i + 1 :], start=i + 1):
 
-                if ob_j.time - stack_threshold > start_time:
+                if ob_j.time - stack_threshold_td > start_time:
                     break
 
                 if distance(ob_j.position, ob_i.position) < stack_dist:
@@ -2250,22 +2547,26 @@ class Beatmap:
         radius = circle_radius(cs)
         stack_offset = radius / 10
 
-        for hit_object in hit_objects:
+        for hit_object in hit_object_list:
             offset = stack_offset * stack_height[hit_object]
             p = hit_object.position
             p_new = Position(p.x - offset, p.y - offset)
             hit_object.position = p_new
 
-        return hit_objects
+        return tuple(hit_object_list)
 
     @lazyval
-    def _hit_object_times(self):
+    def _hit_object_times(self) -> List[timedelta]:
         """a (sorted) list of hitobject time's, so they can be searched with
         ``np.searchsorted``
         """
         return [hitobj.time for hitobj in self._hit_objects]
 
-    def closest_hitobject(self, t, side="left"):
+    def closest_hitobject(
+        self,
+        t: timedelta,
+        side: Literal["left", "right"] = "left",
+    ) -> HitObject:
         """The hitobject closest in time to ``t``.
 
         Parameters
@@ -2308,14 +2609,14 @@ class Beatmap:
         dist1 = abs(hitobj1.time - t)
         dist2 = abs(hitobj2.time - t)
 
-        hitobj1_closer = dist1 <= dist2 if side == "left" else dist1 < dist1
+        hitobj1_closer = dist1 <= dist2 if side == "left" else dist1 < dist2
 
         if hitobj1_closer:
             return hitobj1
         return hitobj2
 
     @lazyval
-    def max_combo(self):
+    def max_combo(self) -> int:
         """The highest combo that can be achieved on this beatmap."""
         max_combo = 0
 
@@ -2327,11 +2628,11 @@ class Beatmap:
 
         return max_combo
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__qualname__}: {self.display_name}>"
 
     @classmethod
-    def from_osz_path(cls, path):
+    def from_osz_path(cls, path: str) -> Dict[str, "Beatmap"]:
         """Read a beatmap collection from an ``.osz`` file on disk.
 
         Parameters
@@ -2353,7 +2654,7 @@ class Beatmap:
             return cls.from_osz_file(zf)
 
     @classmethod
-    def from_path(cls, path):
+    def from_path(cls, path: str) -> "Beatmap":
         """Read in a ``Beatmap`` object from a file on disk.
 
         Parameters
@@ -2375,7 +2676,7 @@ class Beatmap:
             return cls.from_file(file)
 
     @classmethod
-    def from_osz_file(cls, file):
+    def from_osz_file(cls, file: ZipFile) -> Dict[str, "Beatmap"]:
         """Read a beatmap collection from a ``.osz`` file on disk.
 
         Parameters
@@ -2403,7 +2704,7 @@ class Beatmap:
         }
 
     @classmethod
-    def from_file(cls, file):
+    def from_file(cls, file: IO[str]) -> "Beatmap":
         """Read in a ``Beatmap`` object from an open file object.
 
         Parameters
@@ -2432,7 +2733,7 @@ class Beatmap:
         }
     )
 
-    def write_path(self, path):
+    def write_path(self, path: str) -> None:
         """Write a ``Beatmap`` object to a file on disk.
 
         Parameters
@@ -2449,7 +2750,7 @@ class Beatmap:
         with open(path, mode="w", encoding="utf-8-sig") as file:
             self.write_file(file)
 
-    def write_file(self, file):
+    def write_file(self, file: IO[str]) -> None:
         """Write a ``Beatmap`` object to an open file object.
 
         Parameters
@@ -2466,7 +2767,7 @@ class Beatmap:
         file.write(self.pack())
 
     @classmethod
-    def _find_groups(cls, lines):
+    def _find_groups(cls, lines: Iterable[str]) -> GroupsMapping:
         """Split the input data into the named groups.
 
         Parameters
@@ -2480,10 +2781,10 @@ class Beatmap:
             The lines in the section. If the section is a mapping section
             the the value will be a dict from key to value.
         """
-        groups = {}
+        groups: GroupsMapping = {}
 
-        current_group = None
-        group_buffer = []
+        current_group: str | None = None
+        group_buffer: List[str] | Dict[str, str] = []
 
         def commit_group():
             nonlocal group_buffer
@@ -2495,7 +2796,7 @@ class Beatmap:
             # we are currently building a group
             if current_group in cls._mapping_groups:
                 # build a dict from the ``Key: Value`` line format.
-                mapping = {}
+                mapping: Dict[str, str] = {}
                 for line in group_buffer:
                     split = line.split(":", 1)
                     try:
@@ -2533,7 +2834,7 @@ class Beatmap:
         return groups
 
     @classmethod
-    def parse(cls, data):
+    def parse(cls, data: str) -> "Beatmap":
         """Parse a ``Beatmap`` from text in the ``.osu`` format.
 
         Parameters
@@ -2556,7 +2857,7 @@ class Beatmap:
         line = next(lines)
 
         # Remove BOM if present
-        line = line.removeprefix('\ufeff')
+        line = line.removeprefix("\ufeff")
 
         match = cls._version_regex.match(line)
         if match is None:
@@ -2564,20 +2865,21 @@ class Beatmap:
 
         format_version = int(match.group(1))
         groups = cls._find_groups(lines)
+        groups_mapping = cast(Mapping[str, Mapping[str, str]], groups)
 
-        artist = _get_as_str(groups, "Metadata", "Artist")
-        title = _get_as_str(groups, "Metadata", "Title")
+        artist = _get_as_str(groups_mapping, "Metadata", "Artist")
+        title = _get_as_str(groups_mapping, "Metadata", "Title")
         od = _get_as_float(
-            groups,
+            groups_mapping,
             "Difficulty",
             "OverallDifficulty",
         )
 
-        timing_points = []
+        timing_points: List[TimingPoint] = []
         # the parent starts as None because the first timing point should
         # not be inherited
-        parent = None
-        for raw_timing_point in groups["TimingPoints"]:
+        parent: TimingPoint | None = None
+        for raw_timing_point in cast(List[str], groups["TimingPoints"]):
             timing_point = TimingPoint.parse(raw_timing_point, parent)
             if timing_point.parent is None:
                 # we have a new parent node, pass that along to the new
@@ -2586,55 +2888,59 @@ class Beatmap:
             timing_points.append(timing_point)
 
         slider_multiplier = _get_as_float(
-            groups,
+            groups_mapping,
             "Difficulty",
             "SliderMultiplier",
             default=1.4,  # taken from wiki
         )
         slider_tick_rate = _get_as_float(
-            groups,
+            groups_mapping,
             "Difficulty",
             "SliderTickRate",
             default=1.0,  # taken from wiki
         )
-        
         background = None
-        videos = []
+        videos: List[str] = []
 
-        if 'Events' in groups:
-            for line in groups['Events']:
-                if line.startswith('0') and background is None:
+        if "Events" in groups:
+            for line in cast(List[str], groups["Events"]):
+                if line.startswith("0") and background is None:
                     # Only the first background is used
-                    background = line.split('\"')[1]
-                elif line.startswith('Video') or line.startswith('1'):
-                    videos.append(line.split('\"')[1])
+                    background = line.split("\"")[1]
+                elif line.startswith("Video") or line.startswith("1"):
+                    videos.append(line.split("\"")[1])
 
         return cls(
             format_version=format_version,
-            audio_filename=_get_as_str(groups, "General", "AudioFilename"),
+            audio_filename=_get_as_str(groups_mapping, "General", "AudioFilename"),
             audio_lead_in=timedelta(
-                milliseconds=_get_as_int(groups, "General", "AudioLeadIn", 0),
+                milliseconds=_get_as_int(groups_mapping, "General", "AudioLeadIn", 0),
             ),
             preview_time=timedelta(
-                milliseconds=_get_as_int(groups, "General", "PreviewTime", -1),
+                milliseconds=_get_as_int(groups_mapping, "General", "PreviewTime", -1),
             ),
-            countdown=_get_as_bool(groups, "General", "Countdown", False),
-            sample_set=_get_as_str(groups, "General", "SampleSet", "Normal"),
+            countdown=_get_as_bool(groups_mapping, "General", "Countdown", False),
+            sample_set=_get_as_str(
+                groups_mapping,
+                "General",
+                "SampleSet",
+                "Normal",
+            ),
             stack_leniency=_get_as_float(
-                groups,
+                groups_mapping,
                 "General",
                 "StackLeniency",
                 0,
             ),
-            mode=GameMode(_get_as_int(groups, "General", "Mode", 0)),
+            mode=GameMode(_get_as_int(groups_mapping, "General", "Mode", 0)),
             letterbox_in_breaks=_get_as_bool(
-                groups,
+                groups_mapping,
                 "General",
                 "LetterboxInBreaks",
                 False,
             ),
             widescreen_storyboard=_get_as_bool(
-                groups,
+                groups_mapping,
                 "General",
                 "WidescreenStoryboard",
                 False,
@@ -2642,56 +2948,61 @@ class Beatmap:
             bookmarks=[
                 timedelta(milliseconds=ms)
                 for ms in _get_as_int_list(
-                    groups,
+                    groups_mapping,
                     "Editor",
                     "Bookmarks",
                     [],
                 )
             ],
             distance_spacing=_get_as_float(
-                groups,
+                groups_mapping,
                 "Editor",
                 "DistanceSpacing",
                 1,
             ),
-            beat_divisor=_get_as_int(groups, "Editor", "BeatDivisor", 4),
-            grid_size=_get_as_int(groups, "Editor", "GridSize", 4),
-            timeline_zoom=_get_as_float(groups, "Editor", "TimelineZoom", 1.0),
+            beat_divisor=_get_as_int(groups_mapping, "Editor", "BeatDivisor", 4),
+            grid_size=_get_as_int(groups_mapping, "Editor", "GridSize", 4),
+            timeline_zoom=_get_as_float(
+                groups_mapping,
+                "Editor",
+                "TimelineZoom",
+                1.0,
+            ),
             title=title,
             title_unicode=_get_as_str(
-                groups,
+                groups_mapping,
                 "Metadata",
                 "TitleUnicode",
                 title,
             ),
             artist=artist,
             artist_unicode=_get_as_str(
-                groups,
+                groups_mapping,
                 "Metadata",
                 "ArtistUnicode",
                 artist,
             ),
-            creator=_get_as_str(groups, "Metadata", "Creator"),
-            version=_get_as_str(groups, "Metadata", "Version"),
-            source=_get_as_str(groups, "Metadata", "Source", None),
+            creator=_get_as_str(groups_mapping, "Metadata", "Creator"),
+            version=_get_as_str(groups_mapping, "Metadata", "Version"),
+            source=_get_as_str(groups_mapping, "Metadata", "Source", None),
             # space delimited list
-            tags=_get_as_str(groups, "Metadata", "Tags", "").split(),
-            beatmap_id=_get_as_int(groups, "Metadata", "BeatmapID", None),
+            tags=_get_as_str(groups_mapping, "Metadata", "Tags", "").split(),
+            beatmap_id=_get_as_int(groups_mapping, "Metadata", "BeatmapID", None),
             beatmap_set_id=_get_as_int(
-                groups,
+                groups_mapping,
                 "Metadata",
                 "BeatmapSetID",
                 None,
             ),
-            hp_drain_rate=_get_as_float(groups, "Difficulty", "HPDrainRate"),
-            circle_size=_get_as_float(groups, "Difficulty", "CircleSize"),
+            hp_drain_rate=_get_as_float(groups_mapping, "Difficulty", "HPDrainRate"),
+            circle_size=_get_as_float(groups_mapping, "Difficulty", "CircleSize"),
             overall_difficulty=_get_as_float(
-                groups,
+                groups_mapping,
                 "Difficulty",
                 "OverallDifficulty",
             ),
             approach_rate=_get_as_float(
-                groups,
+                groups_mapping,
                 "Difficulty",
                 "ApproachRate",
                 # old maps didn't have an AR so the OD is used as a default
@@ -2710,7 +3021,7 @@ class Beatmap:
                         slider_multiplier=slider_multiplier,
                         slider_tick_rate=slider_tick_rate,
                     ),
-                    groups["HitObjects"],
+                    cast(List[str], groups["HitObjects"]),
                 )
             ),
         )
@@ -2883,7 +3194,7 @@ class Beatmap:
 
         return packed_str
 
-    def timing_point_at(self, time):
+    def timing_point_at(self, time: timedelta) -> TimingPoint:
         """Get the :class:`slider.beatmap.TimingPoint` at the given time.
 
         Parameters
@@ -2903,12 +3214,12 @@ class Beatmap:
         return self.timing_points[0]
 
     @staticmethod
-    def _base_strain(strain):
+    def _base_strain(strain: float | np.ndarray) -> float | np.ndarray:
         """Scale up the base attribute"""
         return ((5 * np.maximum(1, strain / 0.0675) - 4) ** 3) / 100000
 
     @staticmethod
-    def _handle_group(group):
+    def _handle_group(group: Sequence[timedelta]) -> Iterator[float]:
         inner = range(1, len(group))
         for n in range(len(group)):
             for m in inner:
@@ -2927,7 +3238,11 @@ class Beatmap:
     _strain_step = timedelta(milliseconds=400)
     _decay_weight = 0.9
 
-    def _calculate_difficulty(self, strain, difficulty_hit_objects):
+    def _calculate_difficulty(
+        self,
+        strain: _DifficultyHitObject.Strain,
+        difficulty_hit_objects: Sequence[_DifficultyHitObject],
+    ) -> float:
         highest_strains = []
         append_highest_strain = highest_strains.append
 
@@ -2968,7 +3283,7 @@ class Beatmap:
     _extreme_scaling_factor = 0.5
 
     @staticmethod
-    def _product_no_diagonal(sequence):
+    def _product_no_diagonal(sequence: Sequence[T]) -> Iterator[Tuple[T, T]]:
         """An iterator of the Cartesian product of ``sequence`` with itself
         with the diagonals removed.
 
@@ -2991,8 +3306,13 @@ class Beatmap:
                 yield sequence[n], sequence[m]
 
     def hit_object_difficulty(
-        self, *, easy=False, hard_rock=False, double_time=False, half_time=False
-    ):
+        self,
+        *,
+        easy: bool = False,
+        hard_rock: bool = False,
+        double_time: bool = False,
+        half_time: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Compute the difficulty of each hit object.
 
         Parameters
@@ -3017,13 +3337,14 @@ class Beatmap:
         cs = self.cs(easy=easy, hard_rock=hard_rock)
         radius = circle_radius(cs)
 
+        modify: Callable[[HitObject], HitObject]
         if double_time:
-            modify = op.attrgetter("double_time")
+            modify = cast(Callable[[HitObject], HitObject], op.attrgetter("double_time"))
         elif half_time:
-            modify = op.attrgetter("half_time")
+            modify = cast(Callable[[HitObject], HitObject], op.attrgetter("half_time"))
         else:
 
-            def modify(e):
+            def modify(e: HitObject) -> HitObject:
                 return e
 
         times = np.empty(
@@ -3048,14 +3369,14 @@ class Beatmap:
 
     def smoothed_difficulty(
         self,
-        smoothing_window,
-        num_points,
+        smoothing_window: float | int,
+        num_points: int,
         *,
-        easy=False,
-        hard_rock=False,
-        double_time=False,
-        half_time=False,
-    ):
+        easy: bool = False,
+        hard_rock: bool = False,
+        double_time: bool = False,
+        half_time: bool = False,
+    ) -> np.ndarray:
         """Calculate a smoothed difficulty at evenly spaced points in time
         between the beginning of the song and the last hit object of the map.
 
@@ -3097,7 +3418,13 @@ class Beatmap:
             num_points,
         )
 
-    def _calculate_stars(self, easy, hard_rock, double_time, half_time):
+    def _calculate_stars(
+        self,
+        easy: bool,
+        hard_rock: bool,
+        double_time: bool,
+        half_time: bool,
+    ) -> None:
         """Compute the stars and star components for this map.
 
         Parameters
@@ -3120,13 +3447,14 @@ class Beatmap:
         intervals = []
         append_interval = intervals.append
 
+        modify: Callable[[HitObject], HitObject]
         if double_time:
-            modify = op.attrgetter("double_time")
+            modify = cast(Callable[[HitObject], HitObject], op.attrgetter("double_time"))
         elif half_time:
-            modify = op.attrgetter("half_time")
+            modify = cast(Callable[[HitObject], HitObject], op.attrgetter("half_time"))
         else:
 
-            def modify(e):
+            def modify(e: HitObject) -> HitObject:
                 return e
 
         hit_objects = map(modify, self._hit_objects)
@@ -3211,7 +3539,7 @@ class Beatmap:
         cache_name = f"_{name}_cache"
 
         def get(
-            self,
+            self: "Beatmap",
             *,
             easy: bool = False,
             hard_rock: bool = False,
@@ -3322,7 +3650,11 @@ class Beatmap:
 
     del _stars_cache_value
 
-    def _round_hitcounts(self, accuracy, count_miss=None):
+    def _round_hitcounts(
+        self,
+        accuracy: np.ndarray,
+        count_miss: np.ndarray | None = None,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Round the accuracy to the nearest hit counts.
 
         Parameters
@@ -3384,22 +3716,22 @@ class Beatmap:
     def performance_points(
         self,
         *,
-        combo=None,
-        accuracy=None,
-        count_300=None,
-        count_100=None,
-        count_50=None,
-        count_miss=None,
-        no_fail=False,
-        easy=False,
-        hidden=False,
-        hard_rock=False,
-        double_time=False,
-        half_time=False,
-        flashlight=False,
-        spun_out=False,
-        version=1,
-    ):
+        combo: int | None = None,
+        accuracy: float | Sequence[float] | np.ndarray | None = None,
+        count_300: int | np.ndarray | None = None,
+        count_100: int | np.ndarray | None = None,
+        count_50: int | np.ndarray | None = None,
+        count_miss: int | np.ndarray | None = None,
+        no_fail: bool = False,
+        easy: bool = False,
+        hidden: bool = False,
+        hard_rock: bool = False,
+        double_time: bool = False,
+        half_time: bool = False,
+        flashlight: bool = False,
+        spun_out: bool = False,
+        version: int = 1,
+    ) -> float | np.ndarray:
         """Compute the performance points for the given map.
 
         Parameters
@@ -3466,10 +3798,6 @@ class Beatmap:
         ...     count_50=0,
         ...     count_miss=0,
         ... )
-        265.20230843362657
-        >>> # vectorized accuracy
-        >>> beatmap.performance_points(
-        ...     accuracy=[0.95, 0.96, 0.97, 0.98, 0.99, 1.0],
         ... )
         array([ 219.09554434,  223.67413382,  230.20890527,  239.72525216, 253.74272587,  274.48717879])
         >>> # with mods
@@ -3563,7 +3891,7 @@ class Beatmap:
         flashlight_bonus = (1.45 * length_bonus) if flashlight else 1
         od_bonus = 0.98 + od**2 / 2500
 
-        mods = {
+        mods: Dict[str, bool] = {
             "easy": easy,
             "hard_rock": hard_rock,
             "half_time": half_time,
