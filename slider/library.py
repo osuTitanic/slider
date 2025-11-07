@@ -6,7 +6,7 @@ import sys
 from functools import lru_cache
 from hashlib import md5
 
-import requests
+import requests  # type: ignore[import]
 
 from .beatmap import Beatmap
 from .cli import maybe_show_progress

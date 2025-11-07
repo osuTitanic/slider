@@ -1,4 +1,5 @@
-from collections import namedtuple
+from __future__ import annotations
+from typing import NamedTuple
 
 from .bit_enum import BitEnum
 
@@ -40,7 +41,7 @@ class Mod(BitEnum):
     scoreV2 = 1 << 29
 
     @classmethod
-    def parse(cls, cs):
+    def parse(cls, cs: str) -> int:
         """Parse a mod mask out of a list of shortened mod names.
 
         Parameters
@@ -56,7 +57,6 @@ class Mod(BitEnum):
         if len(cs) % 2 != 0:
             raise ValueError(f"malformed mods: {cs!r}")
 
-        cs = cs.lower()
         mapping = {
             "ez": cls.easy,
             "hr": cls.hard_rock,
@@ -67,6 +67,7 @@ class Mod(BitEnum):
             "so": cls.spun_out,
             "nf": cls.no_fail,
         }
+        cs = cs.lower()
 
         mod = 0
         for n in range(0, len(cs), 2):
@@ -78,7 +79,7 @@ class Mod(BitEnum):
         return mod
 
 
-def ar_to_ms(ar):
+def ar_to_ms(ar: float) -> float:
     """Convert an approach rate value to milliseconds of time that an element
     appears on the screen before being hit.
 
@@ -105,7 +106,7 @@ def ar_to_ms(ar):
         return 1800 - (ar * 120)
 
 
-def ms_to_ar(ms):
+def ms_to_ar(ms: float) -> float:
     """Convert milliseconds to hit an element into an approach rate value.
 
     Parameters
@@ -133,7 +134,7 @@ def ms_to_ar(ms):
     return ar
 
 
-def circle_radius(cs):
+def circle_radius(cs: float) -> float:
     """Compute the ``CS`` attribute into a circle radius in osu! pixels.
 
     Parameters
@@ -149,7 +150,7 @@ def circle_radius(cs):
     return (512 / 16) * (1 - 0.7 * (cs - 5) / 5)
 
 
-class HitWindows(namedtuple("HitWindows", "hit_300, hit_100, hit_50")):
+class HitWindows(NamedTuple):
     """Times to hit an object at various accuracies
 
     Parameters
@@ -169,9 +170,12 @@ class HitWindows(namedtuple("HitWindows", "hit_300, hit_100, hit_50")):
     A hit further than the ``hit_50`` value away from the time of a hit object
     is a miss.
     """
+    hit_300: float
+    hit_100: float
+    hit_50: float
 
 
-def od_to_ms(od):
+def od_to_ms(od: float) -> HitWindows:
     """Convert an overall difficulty value into milliseconds to hit an object at
     various accuracies.
 
@@ -193,7 +197,7 @@ def od_to_ms(od):
     )
 
 
-def od_to_ms_300(od):
+def od_to_ms_300(od: float) -> float:
     """Convert an overall difficulty value into milliseconds to hit an object at
     maximum accuracy.
 
@@ -214,7 +218,7 @@ def od_to_ms_300(od):
     return 79.5 - 6 * od
 
 
-def ms_300_to_od(ms):
+def ms_300_to_od(ms: float) -> float:
     """Convert the milliseconds to score a 300 into an OD value.
 
     Parameters

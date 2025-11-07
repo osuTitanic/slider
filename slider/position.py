@@ -1,9 +1,12 @@
-from collections import namedtuple
+from __future__ import annotations
+
+import datetime
+from typing import NamedTuple
 
 import numpy as np
 
 
-class Position(namedtuple("Position", "x y")):
+class Position(NamedTuple):
     """A position on the osu! screen.
 
     Parameters
@@ -19,14 +22,16 @@ class Position(namedtuple("Position", "x y")):
     Positions may fall outside of this range for slider curve control points.
     """
 
-    x_max = 512
-    y_max = 384
+    x: float
+    y: float
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Position):
+            return NotImplemented
         return self.x == other.x and self.y == other.y
 
 
-class Point(namedtuple("Point", "x y offset")):
+class Point(NamedTuple):
     """A position and time on the osu! screen.
 
     Parameters
@@ -44,6 +49,10 @@ class Point(namedtuple("Point", "x y offset")):
     Positions may fall outside of this range for slider curve control points.
     """
 
+    x: float
+    y: float
+    offset: datetime.timedelta
 
-def distance(start, end):
-    return np.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2)
+
+def distance(start: Position, end: Position) -> float:
+    return float(np.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2))

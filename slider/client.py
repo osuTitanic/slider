@@ -1,11 +1,15 @@
 import datetime
 from enum import IntEnum, unique
+from typing import Callable, TypeVar
 
-import requests
+import requests  # type: ignore[import]
 
 from .game_mode import GameMode
 from .mod import Mod
 from .utils import accuracy, lazyval
+
+
+T = TypeVar("T")
 
 
 @unique
@@ -535,10 +539,11 @@ class Client:
     def _parse_timedelta(cs):
         return datetime.timedelta(seconds=int(cs))
 
-    def _parse_optional(class_):
-        def func(cs):
+    @staticmethod
+    def _parse_optional(class_: Callable[[str], T]) -> Callable[[str | None], T | None]:
+        def func(cs: str | None) -> T | None:
             if cs is None:
-                return cs
+                return None
             return class_(cs)
 
         return func

@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+from os import PathLike
+from typing import BinaryIO, List
+
 from .replay import consume_int, consume_string
 
 
@@ -14,13 +19,18 @@ class CollectionDB:
         List of :class:`~slider.collection.Collection` s
     """
 
-    def __init__(self, version, num_collections, collections):
+    def __init__(
+        self,
+        version: int,
+        num_collections: int,
+        collections: List["Collection"],
+    ) -> None:
         self.version = version
         self.num_collections = num_collections
         self.collections = collections
 
     @classmethod
-    def from_path(cls, path):
+    def from_path(cls, path: str | PathLike[str]) -> "CollectionDB":
         """Read in a ``collection.db`` file from disk.
 
         Parameters
@@ -32,7 +42,7 @@ class CollectionDB:
             return cls.from_file(f)
 
     @classmethod
-    def from_file(cls, file):
+    def from_file(cls, file: BinaryIO) -> "CollectionDB":
         """Read in a ``collection.db`` file from an open file object.
 
         Parameters
@@ -43,7 +53,7 @@ class CollectionDB:
         return cls.parse(file.read())
 
     @classmethod
-    def parse(cls, data):
+    def parse(cls, data: bytes) -> "CollectionDB":
         """Parse from ``collection.db`` data.
 
         Parameters
@@ -55,8 +65,8 @@ class CollectionDB:
 
         version = consume_int(buffer)
         num_collections = consume_int(buffer)
-        collections = []
-        for i in range(num_collections):
+        collections: List[Collection] = []
+        for _ in range(num_collections):
             collections.append(Collection.parse(buffer))
 
         return cls(version, num_collections, collections)
@@ -76,13 +86,18 @@ class Collection:
         List of MD5 hashes of each beatmap
     """
 
-    def __init__(self, name, num_beatmaps, md5_hashes):
+    def __init__(
+        self,
+        name: str,
+        num_beatmaps: int,
+        md5_hashes: List[str | None],
+    ) -> None:
         self.name = name
         self.num_beatmaps = num_beatmaps
         self.md5_hashes = md5_hashes
 
     @classmethod
-    def parse(cls, buffer):
+    def parse(cls, buffer: bytearray) -> "Collection":
         """Parse an osu! collection.
 
         Parameters
@@ -91,9 +106,11 @@ class Collection:
             Buffer passed in from parsing ``CollectionDB``
         """
         name = consume_string(buffer)
+        if name is None:
+            raise ValueError("collection name is missing")
         num_beatmaps = consume_int(buffer)
-        md5_hashes = []
-        for i in range(num_beatmaps):
+        md5_hashes: List[str | None] = []
+        for _ in range(num_beatmaps):
             md5_hashes.append(consume_string(buffer))
 
         return cls(name, num_beatmaps, md5_hashes)

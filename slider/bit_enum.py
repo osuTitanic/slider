@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import enum
 import operator as op
+from typing import Dict
 from functools import reduce
 
 
@@ -7,7 +10,7 @@ class BitEnum(enum.IntEnum):
     """A type for enums representing bitmask field values."""
 
     @classmethod
-    def pack(cls, **kwargs):
+    def pack(cls, **kwargs: bool) -> int:
         """Pack a bitmask from explicit bit values.
 
         Parameters
@@ -25,13 +28,14 @@ class BitEnum(enum.IntEnum):
         try:
             return reduce(
                 op.or_,
-                (members[k] * bool(v) for k, v in kwargs.items()),
+                (int(members[k]) * bool(v) for k, v in kwargs.items()),
+                0,
             )
         except KeyError as e:
             raise TypeError(f"{e} is not a member of {cls.__qualname__}")
 
     @classmethod
-    def unpack(cls, bitmask):
+    def unpack(cls, bitmask: int) -> Dict[str, bool]:
         """Unpack a bitmask into a dictionary from field name to field state.
 
         Parameters

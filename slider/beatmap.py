@@ -5,6 +5,7 @@ from datetime import timedelta
 from enum import IntEnum, unique
 from functools import partial
 from itertools import chain, cycle, islice
+from typing import Callable, ClassVar
 from zipfile import ZipFile
 
 import numpy as np
@@ -269,9 +270,9 @@ class HitObject:
         combo.
     """
 
-    time_related_attributes = frozenset({"time"})
+    time_related_attributes: ClassVar[frozenset[str]] = frozenset({"time"})
     # must be set by subclasses
-    type_code = None
+    type_code: ClassVar[int] = 0
 
     # TODO slider v1.x.x: reconsider argument order and default parameters
     # (defaults only exist right now for backwards compat). similarly for all
@@ -1345,7 +1346,7 @@ def _pack_int(field: str, int_in: int, default=no_default):
     return str(int(int_in))
 
 
-def _pack_float(field: str, float_in: float or int, default=no_default):
+def _pack_float(field: str, float_in: float | int, default=no_default) -> str:
     """Pack float to a string. If the float number can be converted to
     int without loss, return the packed string of the converted int.
 
@@ -3190,7 +3191,8 @@ class Beatmap:
         )
         self._rhythm_awkwardness_cache[key] = rhythm_awkwardness
 
-    def _stars_cache_value(name, doc):
+    @staticmethod
+    def _stars_cache_value(name: str, doc: str) -> Callable[..., float]:
         """Create a cached function from pulling from the values generated
         in ``_calculate_stars``.
 
@@ -3209,8 +3211,13 @@ class Beatmap:
         cache_name = f"_{name}_cache"
 
         def get(
-            self, *, easy=False, hard_rock=False, double_time=False, half_time=False
-        ):
+            self,
+            *,
+            easy: bool = False,
+            hard_rock: bool = False,
+            double_time: bool = False,
+            half_time: bool = False,
+        ) -> float:
             key = (
                 bool(easy),
                 bool(hard_rock),
