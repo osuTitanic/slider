@@ -22,18 +22,18 @@ def test_parse_beatmap_format_v3():
     )
 
 
-def test_version(beatmap):
+def test_version(beatmap: slider.Beatmap):
     assert beatmap.format_version == 14
 
 
-def test_display_name(beatmap):
+def test_display_name(beatmap: slider.Beatmap):
     assert beatmap.display_name == (
         "AKINO from bless4 & CHiCO with HoneyWorks - MIIRO "
         "vs. Ai no Scenario [Tatoe]"
     )
 
 
-def test_parse_section_general(beatmap):
+def test_parse_section_general(beatmap: slider.Beatmap):
     assert beatmap.audio_filename == "tatoe.mp3"
     assert beatmap.audio_lead_in == timedelta()
     assert beatmap.preview_time == timedelta(milliseconds=6538)
@@ -45,14 +45,14 @@ def test_parse_section_general(beatmap):
     assert not beatmap.widescreen_storyboard
 
 
-def test_parse_section_editor(beatmap):
+def test_parse_section_editor(beatmap: slider.Beatmap):
     assert beatmap.distance_spacing == 1.1
     assert beatmap.beat_divisor == 6
     assert beatmap.grid_size == 4
     assert beatmap.timeline_zoom == 1.8
 
 
-def test_parse_section_metadata(beatmap):
+def test_parse_section_metadata(beatmap: slider.Beatmap):
     assert beatmap.title == "MIIRO vs. Ai no Scenario"
     assert beatmap.title_unicode == "海色 vs. アイのシナリオ"
     assert beatmap.artist == "AKINO from bless4 & CHiCO with HoneyWorks"
@@ -92,7 +92,7 @@ def test_parse_section_metadata(beatmap):
     assert beatmap.beatmap_set_id == 325158
 
 
-def test_parse_section_difficulty(beatmap):
+def test_parse_section_difficulty(beatmap: slider.Beatmap):
     assert beatmap.hp_drain_rate == 6.5
     assert beatmap.circle_size == 4
     assert beatmap.overall_difficulty == 9
@@ -101,7 +101,7 @@ def test_parse_section_difficulty(beatmap):
     assert beatmap.slider_tick_rate == 1
 
 
-def test_parse_section_timing_points(beatmap):
+def test_parse_section_timing_points(beatmap: slider.Beatmap):
     # currently only checking the first timing point
     timing_points_0 = beatmap.timing_points[0]
     assert timing_points_0.offset == timedelta()
@@ -113,7 +113,7 @@ def test_parse_section_timing_points(beatmap):
     assert timing_points_0.kiai_mode == 0
 
 
-def test_parse_section_hit_objects(beatmap):
+def test_parse_section_hit_objects(beatmap: slider.Beatmap):
     # Only hit object 0 tested for now
     hit_objects_0 = beatmap.hit_objects(stacking=False)[0]
     assert hit_objects_0.position == Position(x=243, y=164)
@@ -193,7 +193,7 @@ def test_hit_objects_stacking():
         assert ob.position.y == 128 - (i * stack_offset)
 
 
-def test_hit_objects_hard_rock(beatmap):
+def test_hit_objects_hard_rock(beatmap: slider.Beatmap):
     # Only hit object 0 tested for now
     hit_objects_hard_rock_0 = beatmap.hit_objects(hard_rock=True, stacking=False)[0]
     assert hit_objects_hard_rock_0.position == Position(x=243, y=220)
@@ -266,39 +266,39 @@ def test_closest_hitobject():
     assert beatmap.closest_hitobject(middle_t, side="right") == hit_object3
 
 
-def test_ar(beatmap):
+def test_ar(beatmap: slider.Beatmap):
     assert beatmap.ar() == 9.5
 
 
-def test_bpm_min(beatmap):
+def test_bpm_min(beatmap: slider.Beatmap):
     assert beatmap.bpm_min() == 180
 
 
-def test_bpm_max(beatmap):
+def test_bpm_max(beatmap: slider.Beatmap):
     assert beatmap.bpm_max() == 195
 
 
-def test_cs(beatmap):
+def test_cs(beatmap: slider.Beatmap):
     assert beatmap.cs() == 4
 
 
-def test_hp(beatmap):
+def test_hp(beatmap: slider.Beatmap):
     assert beatmap.hp() == 6.5  # issue #57
 
 
-def test_od(beatmap):
+def test_od(beatmap: slider.Beatmap):
     assert beatmap.od() == 9
 
 
-def test_background(beatmap):
+def test_background(beatmap: slider.Beatmap):
     assert beatmap.background == "miiro_no_scenario.png"
 
 
-def test_video(beatmap):
+def test_video(beatmap: slider.Beatmap):
     assert beatmap.videos == []
 
 
-def test_pack(beatmap):
+def test_pack(beatmap: slider.Beatmap):
     # Pack the beatmap and parse it again to see if there is difference.
     packed_str = beatmap.pack()
     packed = slider.Beatmap.parse(packed_str)
