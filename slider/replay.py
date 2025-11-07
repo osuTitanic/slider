@@ -488,18 +488,20 @@ class Replay:
         if beatmap is None:
             raise ValueError("performance points require a known beatmap")
 
-        return beatmap.performance_points(
-            count_300=self.count_300,
-            count_100=self.count_100,
-            count_50=self.count_50,
-            count_miss=self.count_miss,
-            easy=self.easy,
-            hard_rock=self.hard_rock,
-            half_time=self.half_time,
-            double_time=self.double_time,
-            hidden=self.hidden,
-            flashlight=self.flashlight,
-            spun_out=self.spun_out,
+        return float(
+            beatmap.performance_points(
+                count_300=self.count_300,
+                count_100=self.count_100,
+                count_50=self.count_50,
+                count_miss=self.count_miss,
+                easy=self.easy,
+                hard_rock=self.hard_rock,
+                half_time=self.half_time,
+                double_time=self.double_time,
+                hidden=self.hidden,
+                flashlight=self.flashlight,
+                spun_out=self.spun_out,
+            )
         )
 
     @lazyval

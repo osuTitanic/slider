@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import re
 import operator as op
+from bisect import bisect_left
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import timedelta
 from enum import IntEnum, unique
@@ -46,14 +47,16 @@ GroupsMapping = Dict[str, GroupValue]
 
 
 def _get(
-    cs: Sequence[str], ix: int, default: str | NoDefaultType = no_default
+    cs: Sequence[str],
+    ix: int,
+    default: str | NoDefaultType = no_default
 ) -> str:
     try:
         return cs[ix]
     except IndexError:
         if default is no_default:
             raise
-        return default
+        return cast(str, default)
 
 
 class TimingPoint:
@@ -103,6 +106,7 @@ class TimingPoint:
         self.sample_set = sample_set
         self.volume = np.clip(volume, 0, 100)
         self.parent = parent
+        self.inherited = parent is not None
         self.kiai_mode = kiai_mode
 
     @lazyval
@@ -179,24 +183,24 @@ class TimingPoint:
             Raised when ``data`` does not describe a ``TimingPoint`` object.
         """
         try:
-            offset, ms_per_beat, *rest = data.split(",")
+            offset_raw, ms_per_beat_raw, *rest = data.split(",")
         except ValueError:
             raise ValueError(
                 f"failed to parse {cls.__qualname__} from {data!r}",
             )
 
         try:
-            offset_float = float(offset)
+            offset_float = float(offset_raw)
         except ValueError:
-            raise ValueError(f"offset should be a float, got {offset!r}")
+            raise ValueError(f"offset should be a float, got {offset_raw!r}")
 
-        offset = timedelta(milliseconds=offset_float)
+        offset_td = timedelta(milliseconds=offset_float)
 
         try:
-            ms_per_beat = float(ms_per_beat)
+            ms_per_beat_value = float(ms_per_beat_raw)
         except ValueError:
             raise ValueError(
-                f"ms_per_beat should be a float, got {ms_per_beat!r}",
+                f"ms_per_beat should be a float, got {ms_per_beat_raw!r}",
             )
 
         try:
@@ -234,8 +238,8 @@ class TimingPoint:
             raise ValueError(f"kiai_mode should be a bool, got {kiai_mode!r}")
 
         return cls(
-            offset=offset,
-            ms_per_beat=ms_per_beat,
+            offset=offset_td,
+            ms_per_beat=ms_per_beat_value,
             meter=meter,
             sample_type=sample_type,
             sample_set=sample_set,
@@ -1188,14 +1192,14 @@ def _get_as_str(
     except KeyError:
         if default is no_default:
             raise ValueError(f"missing section {section!r}")
-        return default
+        return cast(T, default)
 
     try:
         return mapping[field]
     except KeyError:
         if default is no_default:
             raise ValueError(f"missing field {field!r} in section {section!r}")
-        return default
+        return cast(T, default)
 
 
 @overload
@@ -1247,8 +1251,10 @@ def _get_as_int(
     if v is default:
         return cast(T, v)
 
+    str_v = cast(str, v)
+
     try:
-        return int(v)
+        return int(str_v)
     except ValueError:
         raise ValueError(
             f"field {field!r} in section {section!r} should be an int," f" got {v!r}",
@@ -1304,11 +1310,13 @@ def _get_as_int_list(
     if v is default:
         return cast(T, v)
 
-    if not v:
+    str_v = cast(str, v)
+
+    if not str_v:
         return []
 
     try:
-        return [int(e.strip()) for e in v.split(",")]
+        return [int(e.strip()) for e in str_v.split(",")]
     except ValueError:
         raise ValueError(
             f"field {field!r} in section {section!r} should be an int list,"
@@ -1365,8 +1373,10 @@ def _get_as_float(
     if v is default:
         return cast(T, v)
 
+    str_v = cast(str, v)
+
     try:
-        return float(v)
+        return float(str_v)
     except ValueError:
         raise ValueError(
             f"field {field!r} in section {section!r} should be a float," f" got {v!r}",
@@ -1422,10 +1432,12 @@ def _get_as_bool(
     if v is default:
         return cast(T, v)
 
+    str_v = cast(str, v)
+
     try:
         # cast to int then to bool because '0' is still True; bools are written
         # to the file as '0' and '1' so this is safe.
-        return bool(int(v))
+        return bool(int(str_v))
     except ValueError:
         raise ValueError(
             f"field {field!r} in section {section!r} should be a bool," f" got {v!r}",
@@ -1468,8 +1480,12 @@ def _invalid_to_default(
         return field_value
 
     if default is no_default:
+        if isinstance(expected_type, tuple):
+            expected_name = ", ".join(t.__name__ for t in expected_type)
+        else:
+            expected_name = expected_type.__name__
         raise ValueError(
-            f"field {field!r} should be a {expected_type.__name__!r},"
+            f"field {field!r} should be a {expected_name!r},"
             f" got {field_value.__class__.__name__!r}",
         )
 
@@ -1766,11 +1782,11 @@ def _moving_average_by_time(
         num,
         dtype="timedelta64[ns]",
     )
-    delta = np.timedelta64(int(delta * 1e9), "ns")
+    delta_ns = np.timedelta64(int(delta * 1e9), "ns")
 
     # compute the start and stop indices for each sampled window
-    window_start_ixs = np.searchsorted(times[:, 0], out_times - delta)
-    window_stop_ixs = np.searchsorted(times[:, 0], out_times + delta)
+    window_start_ixs = np.searchsorted(times[:, 0], out_times - delta_ns)
+    window_stop_ixs = np.searchsorted(times[:, 0], out_times + delta_ns)
 
     # a 2d array of shape ``(num, 2)`` where each row holds the start and stop
     # index for the window
@@ -1789,6 +1805,18 @@ def _moving_average_by_time(
     out_values = np.stack(window_sums / window_sizes.reshape((-1, 1)))
 
     return out_times.reshape((-1, 1)), out_values
+
+
+def _calculate_accuracy_array(
+    count_300: np.ndarray,
+    count_100: np.ndarray,
+    count_50: np.ndarray,
+    count_miss: np.ndarray,
+) -> np.ndarray:
+    """Vectorized variant of :func:`slider.utils.accuracy`."""
+    total_hits = count_300 + count_100 + count_50 + count_miss
+    points_of_hits = (count_300 * 300) + (count_100 * 100) + (count_50 * 50)
+    return points_of_hits / (total_hits * 300)
 
 
 class _DifficultyHitObject:
@@ -1861,7 +1889,7 @@ class _DifficultyHitObject:
         previous: "_DifficultyHitObject",
         strain: "_DifficultyHitObject.Strain",
     ) -> float:
-        result = 0
+        result = 0.0
         scaling = self.weight_scaling[strain]
 
         hit_object = self.hit_object
@@ -2116,7 +2144,7 @@ class Beatmap:
         bpm : float
             The minimum BPM in this beatmap.
         """
-        bpm = min(p.bpm for p in self.timing_points if p.bpm)
+        bpm = float(min(p.bpm for p in self.timing_points if p.bpm))
         if double_time:
             bpm *= 1.5
         elif half_time:
@@ -2144,7 +2172,7 @@ class Beatmap:
         bpm : float
             The maximum BPM in this beatmap.
         """
-        bpm = max(p.bpm for p in self.timing_points if p.bpm)
+        bpm = float(max(p.bpm for p in self.timing_points if p.bpm))
         if double_time:
             bpm *= 1.5
         elif half_time:
@@ -2418,7 +2446,7 @@ class Beatmap:
                         isinstance(ob_n, Slider)
                         and distance(ob_n.curve(1), ob_i.position) < stack_dist
                     ):
-                        offset = stack_height[ob_i] - stack_height[ob_n] + 1
+                        stack_delta = stack_height[ob_i] - stack_height[ob_n] + 1
 
                         for hj in hit_objects_reversed[i:n]:
                             # For each object which was declared under this
@@ -2426,7 +2454,7 @@ class Beatmap:
                             # the slider end (rather than above).
                             dist = distance(ob_n.curve(1), hj.position)
                             if dist < stack_dist:
-                                stack_height[hj] -= offset
+                                stack_height[hj] -= stack_delta
 
                         # We have hit a slider.  We should restart calculation
                         # using this as the new base.
@@ -2465,7 +2493,7 @@ class Beatmap:
 
         # apply stacking to original ordering
         radius = circle_radius(cs)
-        stack_offset = radius / 10
+        stack_offset = radius / 10.0
 
         for hit_object in hit_object_list:
             offset = stack_offset * stack_height[hit_object]
@@ -2545,7 +2573,7 @@ class Beatmap:
 
         # apply stacking
         radius = circle_radius(cs)
-        stack_offset = radius / 10
+        stack_offset = radius / 10.0
 
         for hit_object in hit_object_list:
             offset = stack_offset * stack_height[hit_object]
@@ -2592,7 +2620,7 @@ class Beatmap:
         if len(self._hit_objects) == 1:
             return self._hit_objects[0]
 
-        i = np.searchsorted(self._hit_object_times, t)
+        i = bisect_left(self._hit_object_times, t)
         # if ``t`` is after the last hitobject, an index of
         # len(self._hit_objects) will be returned. The last hitobject will
         # always be the closest hitobject in this case.
@@ -2784,7 +2812,7 @@ class Beatmap:
         groups: GroupsMapping = {}
 
         current_group: str | None = None
-        group_buffer: List[str] | Dict[str, str] = []
+        group_buffer: List[str] = []
 
         def commit_group():
             nonlocal group_buffer
@@ -2807,9 +2835,9 @@ class Beatmap:
 
                     # throw away whitespace
                     mapping[key.strip()] = value.strip()
-                group_buffer = mapping
-
-            groups[current_group] = group_buffer
+                groups[current_group] = mapping
+            else:
+                groups[current_group] = list(group_buffer)
             group_buffer = []
 
         for line in lines:
@@ -3243,20 +3271,20 @@ class Beatmap:
         strain: _DifficultyHitObject.Strain,
         difficulty_hit_objects: Sequence[_DifficultyHitObject],
     ) -> float:
-        highest_strains = []
+        highest_strains: List[float] = []
         append_highest_strain = highest_strains.append
 
         strain_step = self._strain_step
         interval_end = strain_step
-        max_strain = 0
+        max_strain = 0.0
 
-        previous = None
+        previous: _DifficultyHitObject | None = None
         for difficulty_hit_object in difficulty_hit_objects:
             while difficulty_hit_object.hit_object.time > interval_end:
                 append_highest_strain(max_strain)
 
                 if previous is None:
-                    max_strain = 0
+                    max_strain = 0.0
                 else:
                     decay = (
                         _DifficultyHitObject.decay_base[strain]
@@ -3269,12 +3297,12 @@ class Beatmap:
             max_strain = max(max_strain, difficulty_hit_object.strains[strain])
             previous = difficulty_hit_object
 
-        difficulty = 0
-        weight = 1
+        difficulty = 0.0
+        weight = 1.0
 
         decay_weight = self._decay_weight
-        for strain in sorted(highest_strains, reverse=True):
-            difficulty += weight * strain
+        for strain_value in sorted(highest_strains, reverse=True):
+            difficulty += weight * strain_value
             weight *= decay_weight
 
         return difficulty
@@ -3376,7 +3404,7 @@ class Beatmap:
         hard_rock: bool = False,
         double_time: bool = False,
         half_time: bool = False,
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Calculate a smoothed difficulty at evenly spaced points in time
         between the beginning of the song and the last hit object of the map.
 
@@ -3441,10 +3469,10 @@ class Beatmap:
         cs = self.cs(easy=easy, hard_rock=hard_rock)
         radius = circle_radius(cs)
 
-        difficulty_hit_objects = []
+        difficulty_hit_objects: List[_DifficultyHitObject] = []
         append_difficulty_hit_object = difficulty_hit_objects.append
 
-        intervals = []
+        intervals: List[timedelta] = []
         append_interval = intervals.append
 
         modify: Callable[[HitObject], HitObject]
@@ -3470,7 +3498,7 @@ class Beatmap:
             append_difficulty_hit_object(new)
             previous = new
 
-        group = []
+        group: List[timedelta] = []
         append_group_member = group.append
         clear_group = group.clear
 
@@ -3478,7 +3506,7 @@ class Beatmap:
         break_threshhold = timedelta(milliseconds=1200)
 
         count_offsets = 0
-        rhythm_awkwardness = 0
+        rhythm_awkwardness = 0.0
 
         for interval in intervals:
             is_break = interval >= break_threshhold
@@ -3653,7 +3681,7 @@ class Beatmap:
     def _round_hitcounts(
         self,
         accuracy: np.ndarray,
-        count_miss: np.ndarray | None = None,
+        count_miss: np.ndarray | int | Sequence[int] | None = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Round the accuracy to the nearest hit counts.
 
@@ -3675,43 +3703,70 @@ class Beatmap:
         count_miss : np.ndarray[int]
             The number of misses.
         """
+        accuracy_array = np.array(accuracy, ndmin=1, copy=False, dtype=np.float64)
+
         if count_miss is None:
-            count_miss = np.full_like(accuracy, 0)
+            count_miss_array = np.zeros_like(accuracy_array, dtype=np.int64)
+        else:
+            count_miss_array = np.array(
+                count_miss,
+                ndmin=1,
+                copy=False,
+                dtype=np.int64,
+            )
 
-        max_300 = len(self._hit_objects) - count_miss
+        max_300 = np.asarray(
+            len(self._hit_objects) - count_miss_array,
+            dtype=np.int64,
+        )
 
-        accuracy = np.maximum(
+        zero_hits = np.zeros_like(max_300, dtype=np.int64)
+
+        clamped_accuracy = np.maximum(
             0.0,
             np.minimum(
-                calculate_accuracy(max_300, 0, 0, count_miss) * 100.0,
-                accuracy * 100,
+                _calculate_accuracy_array(
+                    max_300,
+                    zero_hits,
+                    zero_hits,
+                    count_miss_array,
+                )
+                * 100.0,
+                accuracy_array * 100.0,
             ),
         )
 
-        count_50 = np.full_like(accuracy, 0)
+        count_50 = np.zeros_like(max_300, dtype=np.int64)
         count_100 = np.round(
             -3.0
-            * ((accuracy * 0.01 - 1.0) * len(self._hit_objects) + count_miss)
+            * (
+                (clamped_accuracy * 0.01 - 1.0)
+                * len(self._hit_objects)
+                + count_miss_array
+            )
             * 0.5,
-        )
+        ).astype(np.int64)
 
-        mask = count_100 > len(self._hit_objects) - count_miss
+        mask = count_100 > len(self._hit_objects) - count_miss_array
         count_100[mask] = 0
         count_50[mask] = np.round(
             -6.0
             * (
-                (accuracy[mask] * 0.01 - 1.0) * len(self._hit_objects)
-                + count_miss[mask]
+                (clamped_accuracy[mask] * 0.01 - 1.0)
+                * len(self._hit_objects)
+                + count_miss_array[mask]
             )
             * 0.2,
-        )
+        ).astype(np.int64)
         count_50[mask] = np.minimum(max_300[mask], count_50[mask])
 
         count_100[~mask] = np.minimum(max_300[~mask], count_100[~mask])
 
-        count_300 = len(self._hit_objects) - count_100 - count_50 - count_miss
+        count_300 = (
+            len(self._hit_objects) - count_100 - count_50 - count_miss_array
+        )
 
-        return count_300, count_100, count_50, count_miss
+        return count_300, count_100, count_50, count_miss_array
 
     def performance_points(
         self,
@@ -3817,26 +3872,54 @@ class Beatmap:
             if count_300 is not None or count_100 is not None or count_50 is not None:
                 raise ValueError("cannot pass accuracy and hit counts")
             # compute the closest hit counts for the accuracy
-            accuracy = np.array(accuracy, ndmin=1, copy=False)
-            count_300, count_100, count_50, count_miss = self._round_hitcounts(
-                accuracy,
-                np.full_like(accuracy, 0) if count_miss is None else count_miss,
+            accuracy_array = np.array(accuracy, ndmin=1, copy=False, dtype=np.float64)
+            count_miss_array = (
+                np.zeros_like(accuracy_array, dtype=np.int64)
+                if count_miss is None
+                else np.array(count_miss, ndmin=1, copy=False, dtype=np.int64)
             )
+            count_300, count_100, count_50, count_miss_array = self._round_hitcounts(
+                accuracy_array,
+                count_miss_array,
+            )
+            accuracy = accuracy_array
+            count_miss = count_miss_array
 
         elif count_300 is None and count_100 is None and count_50 is None:
-            accuracy = np.array(1.0, ndmin=1, copy=False)
-            count_300, count_100, count_50, count_miss = self._round_hitcounts(
-                accuracy,
-                np.full_like(accuracy, 0) if count_miss is None else count_miss,
+            accuracy_array = np.array(1.0, ndmin=1, copy=False, dtype=np.float64)
+            count_miss_array = (
+                np.zeros_like(accuracy_array, dtype=np.int64)
+                if count_miss is None
+                else np.array(count_miss, ndmin=1, copy=False, dtype=np.int64)
             )
-        elif np.all(
-            count_300 + count_100 + count_50 + count_miss != len(self._hit_objects)
-        ):
-            s = count_300 + count_100 + count_50 + count_miss
-            os = len(self._hit_objects)
-            raise ValueError(
-                f"hit counts don't sum to the total for the map, {s} != {os}"
+            count_300, count_100, count_50, count_miss_array = self._round_hitcounts(
+                accuracy_array,
+                count_miss_array,
             )
+            accuracy = accuracy_array
+            count_miss = count_miss_array
+        else:
+            if count_300 is None or count_100 is None or count_50 is None:
+                raise ValueError("must provide all hit counts")
+
+            count_300 = np.array(count_300, ndmin=1, copy=False, dtype=np.int64)
+            count_100 = np.array(count_100, ndmin=1, copy=False, dtype=np.int64)
+            count_50 = np.array(count_50, ndmin=1, copy=False, dtype=np.int64)
+
+            if count_miss is None:
+                count_miss = np.zeros_like(count_300, dtype=np.int64)
+            else:
+                count_miss = np.array(count_miss, ndmin=1, copy=False, dtype=np.int64)
+
+            if np.any(
+                count_300 + count_100 + count_50 + count_miss
+                != len(self._hit_objects)
+            ):
+                s = count_300 + count_100 + count_50 + count_miss
+                os = len(self._hit_objects)
+                raise ValueError(
+                    f"hit counts don't sum to the total for the map, {s} != {os}"
+                )
 
         od = self.od(
             easy=easy,
@@ -3851,7 +3934,7 @@ class Beatmap:
             double_time=double_time,
         )
 
-        accuracy_scaled = calculate_accuracy(
+        accuracy_scaled = _calculate_accuracy_array(
             count_300,
             count_100,
             count_50,
@@ -3876,7 +3959,7 @@ class Beatmap:
 
         combo_break_penalty = combo**0.8 / self.max_combo**0.8
 
-        ar_bonus = 1
+        ar_bonus = 1.0
         if ar > 10.33:
             # high ar bonus
             ar_bonus += 0.45 * (ar - 10.33)
@@ -3887,8 +3970,8 @@ class Beatmap:
                 low_ar_bonus *= 2
             ar_bonus += low_ar_bonus
 
-        hidden_bonus = 1.18 if hidden else 1
-        flashlight_bonus = (1.45 * length_bonus) if flashlight else 1
+        hidden_bonus = 1.18 if hidden else 1.0
+        flashlight_bonus = (1.45 * length_bonus) if flashlight else 1.0
         od_bonus = 0.98 + od**2 / 2500
 
         mods: Dict[str, bool] = {
@@ -3933,11 +4016,11 @@ class Beatmap:
                 ) / (count_circles * 300)
                 real_accuracy = np.maximum(real_accuracy, 0)
             else:
-                real_accuracy = 0
+                real_accuracy = np.array(0.0, dtype=np.float64)
 
         accuracy_length_bonus = min(1.5, (count_circles / 1000) ** 0.3)
-        accuracy_hidden_bonus = 1.02 if hidden else 1
-        accuracy_flashlight_bonus = 1.02 if flashlight else 1
+        accuracy_hidden_bonus = 1.02 if hidden else 1.0
+        accuracy_flashlight_bonus = 1.02 if flashlight else 1.0
         accuracy_score = (
             1.52163**od
             * real_accuracy**24.0
@@ -3957,7 +4040,7 @@ class Beatmap:
             1 / 1.1
         ) * final_multiplier
 
-        if np.shape(out) == (1,):
-            out = np.asscalar(out)
+        if out.shape == (1,):
+            return float(out.item())
 
         return out
