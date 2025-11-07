@@ -22,3 +22,5 @@ output/
 
 data/*
 venv/*
+
+.idea/discord.xml
