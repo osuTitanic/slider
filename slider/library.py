@@ -1,10 +1,22 @@
-import logging
+from __future__ import annotations
+
 import os
+import sys
+import logging
 import pathlib
 import sqlite3
-import sys
 from functools import lru_cache
 from hashlib import md5
+from typing import (
+    ContextManager,
+    Iterable,
+    Iterator,
+    Optional,
+    Protocol,
+    Tuple,
+    Union,
+    cast
+)
 
 import requests  # type: ignore[import]
 
@@ -13,14 +25,14 @@ from .cli import maybe_show_progress
 
 if sys.platform.startswith("win"):
 
-    def sanitize_filename(name):
+    def sanitize_filename(name: str) -> str:
         for invalid_character in r':*?"\/|<>':
             name = name.replace(invalid_character, "")
         return name
 
 else:
 
-    def sanitize_filename(name):
+    def sanitize_filename(name: str) -> str:
         return name.replace("/", "")
 
 
@@ -37,6 +49,19 @@ Returns
 sanitized_name : str
     The name with invalid characters stripped out.
 """
+
+class _CachedBeatmapReader(Protocol):
+    def __call__(
+        self,
+        library: "Library",
+        *,
+        beatmap_id: Optional[Union[int, str]] = ...,
+        beatmap_md5: Optional[str] = ...,
+    ) -> Beatmap:
+        ...
+
+    def cache_clear(self) -> None:
+        ...
 
 
 class Library:
@@ -57,12 +82,17 @@ class Library:
     DEFAULT_CACHE_SIZE = 2048
 
     def __init__(
-        self, path, *, cache=DEFAULT_CACHE_SIZE, download_url=DEFAULT_DOWNLOAD_URL
-    ):
+        self,
+        path: Union[str, os.PathLike[str]],
+        *,
+        cache: Optional[int] = DEFAULT_CACHE_SIZE,
+        download_url: str = DEFAULT_DOWNLOAD_URL,
+    ) -> None:
         self.path = path = pathlib.Path(path)
 
         self._cache_size = cache
-        self._read_beatmap = lru_cache(cache)(self._raw_read_beatmap)
+        cached_reader = lru_cache(cache)(self._raw_read_beatmap)
+        self._read_beatmap = cast(_CachedBeatmapReader, cached_reader)
         self._db = db = sqlite3.connect(str(path / ".slider.db"))
         with db:
             db.execute(
@@ -76,7 +106,7 @@ class Library:
             )
         self._download_url = download_url
 
-    def copy(self):
+    def copy(self) -> "Library":
         """Create a copy suitable for use in a new thread.
 
         Returns
@@ -90,19 +120,22 @@ class Library:
             download_url=self._download_url,
         )
 
-    def close(self):
+    def close(self) -> None:
         """Close any resources used by this library."""
         self._read_beatmap.cache_clear()
         self._db.close()
 
-    def __enter__(self):
+    def __enter__(self) -> "Library":
         return self
 
-    def __exit__(self, *exc_info):
+    def __exit__(self, *exc_info: object) -> None:
         self.close()
 
     @staticmethod
-    def _osu_files(path, recurse):
+    def _osu_files(
+        path: Union[str, os.PathLike[str]],
+        recurse: bool,
+    ) -> Iterator[pathlib.Path]:
         """An iterator of ``.osu`` filepaths in a directory.
 
         Parameters
@@ -123,22 +156,22 @@ class Library:
                     if filename.endswith(".osu"):
                         yield pathlib.Path(os.path.join(directory, filename))
         else:
-            for entry in os.scandir(directory):
-                path = entry.path
-                if path.endswith(".osu"):
-                    yield pathlib.Path(path)
+            for entry in os.scandir(path):
+                entry_path = entry.path
+                if entry_path.endswith(".osu"):
+                    yield pathlib.Path(entry_path)
 
     @classmethod
     def create_db(
         cls,
-        path,
+        path: Union[str, os.PathLike[str]],
         *,
-        recurse=True,
-        cache=DEFAULT_CACHE_SIZE,
-        download_url=DEFAULT_DOWNLOAD_URL,
-        show_progress=False,
-        skip_exceptions=False,
-    ):
+        recurse: bool = True,
+        cache: Optional[int] = DEFAULT_CACHE_SIZE,
+        download_url: str = DEFAULT_DOWNLOAD_URL,
+        show_progress: bool = False,
+        skip_exceptions: bool = False,
+    ) -> "Library":
         """Create a Library from a directory of ``.osu`` files.
 
         Parameters
@@ -172,33 +205,41 @@ class Library:
         self = cls(path, cache=cache, download_url=download_url)
         write_to_db = self._write_to_db
 
-        progress = maybe_show_progress(
-            self._osu_files(path, recurse=recurse),
-            show_progress,
-            label="Processing beatmaps: ",
-            item_show_func=lambda p: "Done!" if p is None else str(p.stem),
+        progress = cast(
+            ContextManager[Iterable[pathlib.Path]],
+            maybe_show_progress(
+                self._osu_files(path, recurse=recurse),
+                show_progress,
+                label="Processing beatmaps: ",
+                item_show_func=lambda p: "Done!" if p is None else str(p.stem),
+            ),
         )
         with self._db, progress as it:
-            for path in it:
-                with open(path, "rb") as f:
+            for file_path in it:
+                with open(file_path, "rb") as f:
                     data = f.read()
 
                 try:
                     beatmap = Beatmap.parse(data.decode("utf-8-sig"))
                 except Exception as e:
                     if skip_exceptions:
-                        logging.exception(f'Failed to parse "{path}"')
+                        logging.exception(f'Failed to parse "{file_path}"')
                         continue
                     raise ValueError(
-                        f'Failed to parse "{path}". '
+                        f'Failed to parse "{file_path}". '
                         "Use --skip-exceptions to skip this file and continue."
                     ) from e
 
-                write_to_db(beatmap, data, path)
+                write_to_db(beatmap, data, file_path)
 
         return self
 
-    def beatmap_cached(self, *, beatmap_id=None, beatmap_md5=None):
+    def beatmap_cached(
+        self,
+        *,
+        beatmap_id: Optional[int] = None,
+        beatmap_md5: Optional[str] = None,
+    ) -> bool:
         """Whether we have the given beatmap cached.
 
         Parameters
@@ -220,6 +261,8 @@ class Library:
                     (beatmap_id,),
                 )
             else:
+                if beatmap_md5 is None:
+                    raise ValueError("beatmap_md5 must be provided if beatmap_id is None")
                 path_query = self._db.execute(
                     "SELECT 1 FROM beatmaps WHERE md5 = ? LIMIT 1",
                     (beatmap_md5,),
@@ -229,7 +272,12 @@ class Library:
         return bool(path)
 
     @staticmethod
-    def _raw_read_beatmap(self, *, beatmap_id=None, beatmap_md5=None):
+    def _raw_read_beatmap(
+        self: "Library",
+        *,
+        beatmap_id: Optional[Union[int, str]] = None,
+        beatmap_md5: Optional[str] = None,
+    ) -> Beatmap:
         """Function for opening beatmaps from disk.
 
         This handles both cases to only require a single lru cache.
@@ -247,6 +295,8 @@ class Library:
                     (beatmap_id,),
                 )
             else:
+                if beatmap_md5 is None:
+                    raise ValueError("beatmap_md5 must be provided if beatmap_id is None")
                 key = beatmap_md5
                 path_query = self._db.execute(
                     "SELECT path FROM beatmaps WHERE md5 = ?",
@@ -263,7 +313,13 @@ class Library:
         # rebuild
         return Beatmap.from_path(self.path / path)
 
-    def lookup_by_id(self, beatmap_id, *, download=False, save=False):
+    def lookup_by_id(
+        self,
+        beatmap_id: Union[int, str],
+        *,
+        download: bool = False,
+        save: bool = False,
+    ) -> Beatmap:
         """Retrieve a beatmap by its beatmap id.
 
         Parameters
@@ -290,9 +346,9 @@ class Library:
         except KeyError:
             if not download:
                 raise
-            return self.download(beatmap_id, save=save)
+        return self.download(beatmap_id, save=save)
 
-    def lookup_by_md5(self, beatmap_md5):
+    def lookup_by_md5(self, beatmap_md5: str) -> Beatmap:
         """Retrieve a beatmap by its md5 hash.
 
         Parameters
@@ -312,7 +368,12 @@ class Library:
         """
         return self._read_beatmap(self, beatmap_md5=beatmap_md5)
 
-    def beatmap_from_path(self, path, copy=False):
+    def beatmap_from_path(
+        self,
+        path: Union[str, os.PathLike[str]],
+        *,
+        copy: bool = False,
+    ) -> Beatmap:
         """Returns a beatmap from a file on disk.
 
         Parameters
@@ -327,7 +388,8 @@ class Library:
         beatmap : Beatmap
             The beatmap represented by the given file.
         """
-        data_bytes = open(path, "rb").read()
+        with open(path, "rb") as f:
+            data_bytes = f.read()
         data = data_bytes.decode("utf-8-sig")
         beatmap = Beatmap.parse(data)
 
@@ -336,7 +398,12 @@ class Library:
 
         return beatmap
 
-    def save(self, data, *, beatmap=None):
+    def save(
+        self,
+        data: bytes,
+        *,
+        beatmap: Optional[Beatmap] = None,
+    ) -> Beatmap:
         """Save raw data for a beatmap at a given location.
 
         Parameters
@@ -368,7 +435,12 @@ class Library:
             self._write_to_db(beatmap, data, path)
         return beatmap
 
-    def delete(self, beatmap, *, remove_file=True):
+    def delete(
+        self,
+        beatmap: Beatmap,
+        *,
+        remove_file: bool = True,
+    ) -> None:
         """Remove a beatmap from the library.
 
         Parameters
@@ -392,7 +464,12 @@ class Library:
                 (beatmap.beatmap_id,),
             )
 
-    def _write_to_db(self, beatmap, data, path):
+    def _write_to_db(
+        self,
+        beatmap: Beatmap,
+        data: bytes,
+        path: pathlib.Path,
+    ) -> None:
         """Write data to the database.
 
         Parameters
@@ -419,7 +496,12 @@ class Library:
             # ignore duplicate beatmaps
             pass
 
-    def download(self, beatmap_id, *, save=False):
+    def download(
+        self,
+        beatmap_id: Union[int, str],
+        *,
+        save: bool = False,
+    ) -> Beatmap:
         """Download a beatmap.
 
         Parameters
@@ -446,12 +528,12 @@ class Library:
         return beatmap
 
     @property
-    def md5s(self):
+    def md5s(self) -> Tuple[str, ...]:
         """All of the beatmap hashes that this has downloaded."""
         return tuple(md5 for md5, in self._db.execute("SELECT md5 FROM beatmaps"))
 
     @property
-    def ids(self):
+    def ids(self) -> Tuple[int, ...]:
         """All of the beatmap ids that this has downloaded."""
         return tuple(
             int(id_)
