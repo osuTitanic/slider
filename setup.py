@@ -31,7 +31,6 @@ setup(
     install_requires=[
         "numpy",
         "requests",
-        "scipy",
     ],
     extras_require={
         "dev": [

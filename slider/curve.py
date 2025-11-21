@@ -7,14 +7,10 @@ import numpy.typing as npt
 from itertools import accumulate, chain
 from typing import Iterator, List, Sequence, TYPE_CHECKING
 
-try:  # SciPy >= 0.19
-    from scipy.special import comb  # type: ignore[import]
-except ImportError:
-    from scipy.misc import comb  # type: ignore[import]
-
 from .abc import ABCMeta, abstractmethod
 from .position import Position
 from .utils import lazyval
+from .comb import comb
 
 
 class Curve(metaclass=ABCMeta):
