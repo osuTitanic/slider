@@ -2540,6 +2540,7 @@ class Beatmap:
             slider_stack = 0
 
             for j, ob_j in enumerate(hit_object_list[i + 1 :], start=i + 1):
+                curve_pos = Position(float(ob_i.curve(1).x), float(ob_i.curve(1).y))
 
                 if ob_j.time - stack_threshold_td > start_time:
                     break
@@ -2554,7 +2555,7 @@ class Beatmap:
 
                 elif (
                     isinstance(ob_i, Slider)
-                    and distance(ob_j.position, ob_i.curve(1)) < stack_dist
+                    and distance(ob_j.position, curve_pos) < stack_dist
                 ):
                     # Case for sliders - bump notes down and right,
                     # rather than up and left.
