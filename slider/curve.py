@@ -147,7 +147,12 @@ class Bezier(Curve):
         if req_length is None:
             raise ValueError("Bezier.req_length must be set before evaluation")
 
-        coordinates = self.at(t * (req_length / self.length))
+        length = self.length
+        if length == 0:
+            # For zero-length curves return the first point
+            return self.points[0]
+
+        coordinates = self.at(t * (req_length / length))
         return Position(coordinates[0, 0], coordinates[0, 1])
 
     def at(
@@ -214,13 +219,26 @@ class _MetaCurveMixin:
     def _ts(self) -> List[float]:
         lengths = [c.length for c in self._curves]
         length = sum(lengths)
+        out: List[float] = []
+
         req_length = self.req_length
         if req_length is None:
             raise ValueError("req_length must be provided for meta curves")
-        out: List[float] = []
+
+        if length == 0:
+            # All sub-curves have zero length, distribute evenly
+            num_curves = len(self._curves)
+            for i, c in enumerate(self._curves):
+                c.req_length = 0
+                if i < num_curves - 1:
+                    out.append((i + 1) / num_curves)
+            out.append(1)
+            return out
+
         for i, j in enumerate(accumulate(lengths[:-1])):
             self._curves[i].req_length = lengths[i]
             out.append(j / length)
+
         self._curves[-1].req_length = max(
             0,
             lengths[-1] - (length - req_length),
@@ -241,6 +259,9 @@ class _MetaCurveMixin:
             pre_t = ts[bi - 1]
 
         post_t = ts[bi]
+        if post_t == pre_t:
+            # For zero-length segment return the starting point
+            return self._curves[bi](0)
 
         return self._curves[bi]((t - pre_t) / (post_t - pre_t))
 
