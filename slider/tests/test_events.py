@@ -1,11 +1,13 @@
 from slider.beatmap import Beatmap
 from slider.events import (
-    Animation,
     ColourTransformation,
     EventCollection,
+    Background,
+    Animation,
     LayerType,
     Sample,
     Sprite,
+    Video,
 )
 
 
@@ -63,3 +65,28 @@ def test_find_groups_preserves_events_indentation():
     event_lines = groups["Events"]
     assert event_lines[1].startswith(" ")
     assert event_lines[2].startswith("  ")
+
+
+def test_storyboard_offsets_can_be_floats():
+    events = EventCollection.parse([
+        '4,0,TopLeft,"bg.jpg",226.704,264.5',
+    ])
+
+    sprite = events[0]
+    assert isinstance(sprite, Sprite)
+    assert sprite.x_offset == 226.704
+    assert sprite.y_offset == 264.5
+    assert sprite.pack() == 'Sprite,Background,TopLeft,"bg.jpg",226.704,264.5'
+
+
+def test_background_and_video_offsets_can_be_floats():
+    background = Background.parse(['0', '"bg.png"', '226.704', '240.5'])
+    video = Video.parse(['100', '"vid.mp4"', '226.704', '240.5'])
+
+    assert background.x_offset == 226.704
+    assert background.y_offset == 240.5
+    assert background.pack() == '0,0,"bg.png",226.704,240.5'
+
+    assert video.x_offset == 226.704
+    assert video.y_offset == 240.5
+    assert video.pack() == 'Video,100,"vid.mp4",226.704,240.5'

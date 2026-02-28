@@ -1,7 +1,7 @@
-from datetime import timedelta
-from enum import IntEnum
-from typing import Sequence
 from collections import defaultdict
+from datetime import timedelta
+from typing import Sequence
+from enum import IntEnum
 
 class EventType(IntEnum):
     Background = 0
@@ -64,6 +64,28 @@ class Event:
     @staticmethod
     def delta_to_ms(delta: timedelta) -> int:
         return int(delta.total_seconds() * 1000)
+
+    @staticmethod
+    def parse_number(value: str, field_name: str) -> int | float:
+        try:
+            number = float(value)
+        except ValueError as exc:
+            raise ValueError(f'{field_name} is invalid, got {value}') from exc
+
+        if number.is_integer():
+            return int(number)
+
+        return number
+
+    @staticmethod
+    def format_number(value: int | float) -> str:
+        if isinstance(value, int):
+            return str(value)
+
+        if value.is_integer():
+            return str(int(value))
+
+        return format(value, 'g')
 
     def pack(self) -> str:
         if self.raw_data is not None:
@@ -146,8 +168,8 @@ class StoryboardObject(Event):
         layer: LayerType,
         origin: str,
         filename: str,
-        x_offset: int,
-        y_offset: int,
+        x_offset: int | float,
+        y_offset: int | float,
         commands: list[StoryboardCommand] | None = None,
     ) -> None:
         super().__init__(event_type, 0)
@@ -161,7 +183,7 @@ class StoryboardObject(Event):
     def pack_header(self) -> str:
         return (
             f'{self.event_type.name},{self.layer.name},{self.origin},"{self.filename}",'
-            f'{self.x_offset},{self.y_offset}'
+            f'{self.format_number(self.x_offset)},{self.format_number(self.y_offset)}'
         )
 
     def pack_body(self) -> str:
@@ -177,7 +199,10 @@ class StoryboardObject(Event):
         return f"{self.pack_header()}\n{body}"
 
     @classmethod
-    def parse_base_fields(cls, event_params: Sequence[str]) -> tuple[LayerType, str, str, int, int]:
+    def parse_base_fields(
+        cls,
+        event_params: Sequence[str],
+    ) -> tuple[LayerType, str, str, int | float, int | float]:
         if len(event_params) < 5:
             raise ValueError(
                 f'expected at least 5 params for {cls.__name__}, got {event_params}'
@@ -196,15 +221,8 @@ class StoryboardObject(Event):
         except (ValueError, KeyError):
             raise ValueError(f'Invalid layer provided, got {layer}')
 
-        try:
-            x_offset = int(x_offset)
-        except ValueError as exc:
-            raise ValueError(f'x_offset is invalid, got {x_offset}') from exc
-
-        try:
-            y_offset = int(y_offset)
-        except ValueError as exc:
-            raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
+        x_offset = cls.parse_number(x_offset, 'x_offset')
+        y_offset = cls.parse_number(y_offset, 'y_offset')
 
         return layer_type, origin, filename, x_offset, y_offset
 
@@ -367,7 +385,12 @@ class GenericEvent(Event):
 
 
 class Background(Event):
-    def __init__(self, filename: str, x_offset: int, y_offset: int) -> None:
+    def __init__(
+        self,
+        filename: str,
+        x_offset: int | float,
+        y_offset: int | float,
+    ) -> None:
         super().__init__(EventType.Background, 0)
         self.filename = filename
         self.x_offset = x_offset
@@ -376,7 +399,7 @@ class Background(Event):
     def pack(self) -> str:
         return (
             f'0,{self.delta_to_ms(self.start_time)},"{self.filename}",'
-            f'{self.x_offset},{self.y_offset}'
+            f'{self.format_number(self.x_offset)},{self.format_number(self.y_offset)}'
         )
 
     @classmethod
@@ -409,20 +432,10 @@ class Background(Event):
                 f"but got params {event_params}"
             )
 
-        x_offset_int = 0
-        y_offset_int = 0
+        x_offset_number = cls.parse_number(x_offset, 'x_offset')
+        y_offset_number = cls.parse_number(y_offset, 'y_offset')
 
-        try:
-            x_offset_int = int(x_offset)
-        except ValueError as exc:
-            raise ValueError(f'x_offset is invalid, got {x_offset}') from exc
-
-        try:
-            y_offset_int = int(y_offset)
-        except ValueError as exc:
-            raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
-
-        event = cls(filename, x_offset_int, y_offset_int)
+        event = cls(filename, x_offset_number, y_offset_number)
         event.start_time = timedelta(milliseconds=start_time_int)
         return event
 
@@ -491,7 +504,13 @@ class ColourTransformation(Event):
 
 
 class Video(Event):
-    def __init__(self, start_time: int, filename: str, x_offset: int, y_offset: int) -> None:
+    def __init__(
+        self,
+        start_time: int,
+        filename: str,
+        x_offset: int | float,
+        y_offset: int | float,
+    ) -> None:
         super().__init__(EventType.Video, start_time)
         self.filename = filename
         self.x_offset = x_offset
@@ -500,7 +519,7 @@ class Video(Event):
     def pack(self) -> str:
         return (
             f'Video,{self.delta_to_ms(self.start_time)},"{self.filename}",'
-            f'{self.x_offset},{self.y_offset}'
+            f'{self.format_number(self.x_offset)},{self.format_number(self.y_offset)}'
         )
 
     @classmethod
@@ -533,20 +552,10 @@ class Video(Event):
                 f"but got params {event_params}"
             )
 
-        x_offset_int = 0
-        y_offset_int = 0
+        x_offset_number = cls.parse_number(x_offset, 'x_offset')
+        y_offset_number = cls.parse_number(y_offset, 'y_offset')
 
-        try:
-            x_offset_int = int(x_offset)
-        except ValueError as exc:
-            raise ValueError(f'x_offset is invalid, got {x_offset}') from exc
-
-        try:
-            y_offset_int = int(y_offset)
-        except ValueError as exc:
-            raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
-
-        return cls(start_time_int, filename, x_offset_int, y_offset_int)
+        return cls(start_time_int, filename, x_offset_number, y_offset_number)
 
 
 class Sprite(StoryboardObject):
@@ -555,8 +564,8 @@ class Sprite(StoryboardObject):
         layer: LayerType,
         origin: str,
         filename: str,
-        x_offset: int,
-        y_offset: int,
+        x_offset: int | float,
+        y_offset: int | float,
         commands: list[StoryboardCommand] | None = None,
     ) -> None:
         super().__init__(
@@ -581,8 +590,8 @@ class Animation(StoryboardObject):
         layer: LayerType,
         origin: str,
         filename: str,
-        x_offset: int,
-        y_offset: int,
+        x_offset: int | float,
+        y_offset: int | float,
         frame_count: int,
         frame_delay: int,
         loop_type: str = 'LoopForever',
@@ -604,7 +613,8 @@ class Animation(StoryboardObject):
     def pack_header(self) -> str:
         return (
             f'{self.event_type.name},{self.layer.name},{self.origin},"{self.filename}",'
-            f'{self.x_offset},{self.y_offset},{self.frame_count},'
+            f'{self.format_number(self.x_offset)},{self.format_number(self.y_offset)},'
+            f'{self.frame_count},'
             f'{self.frame_delay},{self.loop_type}'
         )
 
