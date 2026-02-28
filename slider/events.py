@@ -118,7 +118,46 @@ class EventCollection:
         self.events.clear()
 
     def pack(self) -> str:
-        return '\n'.join(event.pack() for event in self.events)
+        background_and_videos = [
+            event for event in self.events
+            if event.event_type in {EventType.Background, EventType.Video}
+        ]
+        break_periods = [
+            event for event in self.events
+            if event.event_type == EventType.Break
+        ]
+        storyboard_layers = [
+            event for event in self.events
+            if event.event_type in {EventType.Sprite, EventType.Animation}
+        ]
+        sound_samples = [
+            event for event in self.events
+            if event.event_type == EventType.Sample
+        ]
+
+        packed_str = ""
+        packed_str += "//Background and Video events\n"
+        for event in background_and_videos:
+            packed_str += event.pack() + "\n"
+
+        packed_str += "//Break Periods\n"
+        for event in break_periods:
+            packed_str += event.pack() + "\n"
+
+        packed_str += (
+            "//Storyboard Layer 0 (Background)\n"
+            "//Storyboard Layer 1 (Fail)\n"
+            "//Storyboard Layer 2 (Pass)\n"
+            "//Storyboard Layer 3 (Foreground)\n"
+        )
+        for event in storyboard_layers:
+            packed_str += event.pack() + "\n"
+
+        packed_str += "//Storyboard Sound Samples\n"
+        for event in sound_samples:
+            packed_str += event.pack() + "\n"
+
+        return packed_str.strip()
 
     @classmethod
     def parse(cls, event_data: list[str]) -> 'EventCollection':

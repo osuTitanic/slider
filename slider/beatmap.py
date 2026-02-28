@@ -3104,6 +3104,7 @@ class Beatmap:
                 "Mode",
                 "LetterboxInBreaks",
                 "WidescreenStoryboard",
+                "Bookmarks"
             )
 
             # Some fields have a space between the colon and the value
@@ -3236,7 +3237,6 @@ class Beatmap:
         for hit_object in self._hit_objects:
             # each hit object occupies a line
             packed_str += hit_object.pack() + "\n"
-        packed_str += "\n"
 
         return packed_str
 
