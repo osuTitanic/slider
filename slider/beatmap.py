@@ -50,6 +50,7 @@ T = TypeVar("T")
 NoDefaultType = type[no_default]
 GroupValue = Union[List[str], Dict[str, str]]
 GroupsMapping = Dict[str, GroupValue]
+ColorTuple = Tuple[int, int, int]
 
 
 def _get(cs: Sequence[str], ix: int, default: str | NoDefaultType = no_default) -> str:
@@ -2017,6 +2018,8 @@ class Beatmap:
         The multiplier for slider velocity.
     slider_tick_rate : float
         How often slider ticks appear.
+    combo_colors : list[tuple[int, int, int]]
+        The combo colors from the ``[Colours]`` section.
     timing_points : list[TimingPoint]
         The timing points the the map.
     hit_objects : list[HitObject]
@@ -2065,6 +2068,7 @@ class Beatmap:
         approach_rate: float,
         slider_multiplier: float,
         slider_tick_rate: float,
+        combo_colors: Sequence[ColorTuple],
         timing_points: Sequence[TimingPoint],
         hit_objects: Sequence[HitObject],
         events: EventCollection
@@ -2100,6 +2104,7 @@ class Beatmap:
         self.approach_rate = approach_rate
         self.slider_multiplier = slider_multiplier
         self.slider_tick_rate = slider_tick_rate
+        self.combo_colors = list(combo_colors)
         self.timing_points = list(timing_points)
         self.events = events
         
@@ -2873,6 +2878,53 @@ class Beatmap:
         commit_group()
         return groups
 
+    @staticmethod
+    def _parse_combo_colors(lines: Sequence[str]) -> List[ColorTuple]:
+        """Parse the combo colors from the ``[Colours]`` section.
+        
+        Parameters
+        ----------
+        lines : list[str]
+            The lines in the ``[Colours]`` section.
+            
+        Returns
+        -------
+        combo_colors : list[tuple[int, int, int]]
+            The combo colors from the ``[Colours]`` section.
+            
+        Raises
+        ------
+        ValueError
+            Raised when the combo colors cannot be parsed.
+        """
+        combo_color_map: Dict[int, ColorTuple] = {}
+        for line in lines:
+            key, value = line.split(":", 1)
+            key = key.strip()
+
+            if not key.startswith("Combo"):
+                continue
+
+            try:
+                combo_index = int(key[5:])
+            except ValueError:
+                continue
+
+            rgb = [part.strip() for part in value.split(",")]
+            if len(rgb) != 3:
+                raise ValueError(
+                    f"Invalid color value for {key!r}: expected 3 channels, got {value!r}",
+                )
+
+            try:
+                color = cast(ColorTuple, tuple(map(int, rgb)))
+            except ValueError as exc:
+                raise ValueError(f"Invalid color value for {key!r}: {value!r}") from exc
+
+            combo_color_map[combo_index] = color
+
+        return [combo_color_map[index] for index in sorted(combo_color_map)]
+
     @classmethod
     def parse(cls, data: str) -> "Beatmap":
         """Parse a ``Beatmap`` from text in the ``.osu`` format.
@@ -2947,6 +2999,9 @@ class Beatmap:
             "Difficulty",
             "SliderTickRate",
             default=1.0,  # taken from wiki
+        )
+        combo_colors = cls._parse_combo_colors(
+            cast(List[str], groups.get("Colours", []))
         )
         return cls(
             format_version=format_version,
@@ -3048,6 +3103,7 @@ class Beatmap:
             ),
             slider_multiplier=slider_multiplier,
             slider_tick_rate=slider_tick_rate,
+            combo_colors=combo_colors,
             timing_points=timing_points,
             hit_objects=list(
                 map(
@@ -3228,9 +3284,11 @@ class Beatmap:
         packed_str += "\n"
 
         # pack Colours section
-        # packed_str += '[Colours]\n'
-        # # TODO
-        # packed_str += '\n'
+        if self.combo_colors:
+            packed_str += "[Colours]\n"
+            for index, (r, g, b) in enumerate(self.combo_colors, start=1):
+                packed_str += f"Combo{index} : {r},{g},{b}\n"
+            packed_str += "\n"
 
         # pack HitObjects section
         packed_str += "[HitObjects]\n"

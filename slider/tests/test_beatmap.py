@@ -182,6 +182,7 @@ def test_hit_objects_stacking():
         approach_rate=5,
         slider_multiplier=1,
         slider_tick_rate=1,
+        combo_colors=[],
         timing_points=[],
         events=EventCollection([]),
         hit_objects=hit_objects,
@@ -341,6 +342,7 @@ def test_pack(beatmap: slider.Beatmap):
         "approach_rate",
         "slider_multiplier",
         "slider_tick_rate",
+        "combo_colors",
     ]
     hitobj_attrs = [
         "position",
