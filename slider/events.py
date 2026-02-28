@@ -28,6 +28,26 @@ class EventType(IntEnum):
         }[value]
 
 
+class LayerType(IntEnum):
+    Background = 0
+    Fail = 1
+    Pass = 2
+    Foreground = 3
+    Overlay = 4
+
+    @classmethod
+    def _missing_(cls, value):
+        return {
+            "Background": LayerType.Background,
+            "Fail": LayerType.Fail,
+            "Failing": LayerType.Fail,
+            "Pass": LayerType.Pass,
+            "Passing": LayerType.Pass,
+            "Foreground": LayerType.Foreground,
+            "Overlay": LayerType.Overlay,
+        }[value]
+
+
 class Event:
     """Base class for all storyboard events."""
 
@@ -123,7 +143,7 @@ class StoryboardObject(Event):
     def __init__(
         self,
         event_type: EventType,
-        layer: str,
+        layer: LayerType,
         origin: str,
         filename: str,
         x_offset: int,
@@ -140,12 +160,15 @@ class StoryboardObject(Event):
 
     def pack_header(self) -> str:
         return (
-            f'{int(self.event_type)},{self.layer},{self.origin},"{self.filename}",'
+            f'{int(self.event_type)},{int(self.layer)},{self.origin},"{self.filename}",'
             f'{self.x_offset},{self.y_offset}'
         )
 
     def pack_body(self) -> str:
-        return "\n".join(command.pack() for command in self.commands)
+        return "\n".join(
+            command.pack()
+            for command in self.commands
+        )
 
     def pack(self) -> str:
         body = self.pack_body()
@@ -154,7 +177,7 @@ class StoryboardObject(Event):
         return f"{self.pack_header()}\n{body}"
 
     @classmethod
-    def parse_base_fields(cls, event_params: Sequence[str]) -> tuple[str, str, str, int, int]:
+    def parse_base_fields(cls, event_params: Sequence[str]) -> tuple[LayerType, str, str, int, int]:
         if len(event_params) < 5:
             raise ValueError(
                 f'expected at least 5 params for {cls.__name__}, got {event_params}'
@@ -162,6 +185,16 @@ class StoryboardObject(Event):
 
         layer, origin, filename, x_offset, y_offset, *_ = event_params
         filename = filename.strip('"')
+
+        # Similar to event types, layers can be specified
+        # as either integers or strings
+        if layer.isdigit():
+            layer = int(layer)
+
+        try:
+            layer_type = LayerType(layer)
+        except (ValueError, KeyError):
+            raise ValueError(f'Invalid layer provided, got {layer}')
 
         try:
             x_offset = int(x_offset)
@@ -173,7 +206,7 @@ class StoryboardObject(Event):
         except ValueError as exc:
             raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
 
-        return layer, origin, filename, x_offset, y_offset
+        return layer_type, origin, filename, x_offset, y_offset
 
 
 class EventCollection:
@@ -513,7 +546,7 @@ class Video(Event):
 class Sprite(StoryboardObject):
     def __init__(
         self,
-        layer: str,
+        layer: LayerType,
         origin: str,
         filename: str,
         x_offset: int,
@@ -539,7 +572,7 @@ class Sprite(StoryboardObject):
 class Animation(StoryboardObject):
     def __init__(
         self,
-        layer: str,
+        layer: LayerType,
         origin: str,
         filename: str,
         x_offset: int,
@@ -564,7 +597,7 @@ class Animation(StoryboardObject):
 
     def pack_header(self) -> str:
         return (
-            f'{int(self.event_type)},{self.layer},{self.origin},"{self.filename}",'
+            f'{int(self.event_type)},{int(self.layer)},{self.origin},"{self.filename}",'
             f'{self.x_offset},{self.y_offset},{self.frame_count},'
             f'{self.frame_delay},{self.loop_type}'
         )
@@ -608,7 +641,7 @@ class Sample(Event):
     def __init__(
         self,
         start_time: int,
-        layer: str,
+        layer: LayerType,
         filename: str,
         volume: int = 100,
     ) -> None:
@@ -620,7 +653,7 @@ class Sample(Event):
     def pack(self) -> str:
         return (
             f'5,{self.delta_to_ms(self.start_time)},'
-            f'{self.layer},"{self.filename}",{self.volume}'
+            f'{int(self.layer)},"{self.filename}",{self.volume}'
         )
 
     @classmethod
@@ -632,6 +665,16 @@ class Sample(Event):
 
         start_time, layer, filename, *rest = event_params
         filename = filename.strip('"')
+
+        # Similar to event types, layers can be specified
+        # as either integers or strings
+        if layer.isdigit():
+            layer = int(layer)
+
+        try:
+            layer_type = LayerType(layer)
+        except (ValueError, KeyError):
+            raise ValueError(f'Invalid layer provided, got {layer}')
 
         try:
             start_time_int = int(start_time)
@@ -647,4 +690,4 @@ class Sample(Event):
             except ValueError as exc:
                 raise ValueError(f'Invalid volume provided, got {volume}') from exc
 
-        return cls(start_time_int, layer, filename, volume_int)
+        return cls(start_time_int, layer_type, filename, volume_int)

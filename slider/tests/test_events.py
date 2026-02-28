@@ -1,5 +1,12 @@
 from slider.beatmap import Beatmap
-from slider.events import Animation, ColourTransformation, EventCollection, Sample, Sprite
+from slider.events import (
+    Animation,
+    ColourTransformation,
+    EventCollection,
+    LayerType,
+    Sample,
+    Sprite,
+)
 
 
 def test_storyboard_sprite_parsing():
@@ -13,6 +20,7 @@ def test_storyboard_sprite_parsing():
 
     sprite = events[0]
     assert isinstance(sprite, Sprite)
+    assert sprite.layer == LayerType.Background
     assert len(sprite.commands) == 2
 
     loop = sprite.commands[0]
@@ -34,9 +42,11 @@ def test_animation_and_sample_parsing():
     ])
 
     assert isinstance(events[0], Animation)
+    assert events[0].layer == LayerType.Background
     assert events[0].frame_count == 5
     assert events[0].frame_delay == 200
     assert isinstance(events[1], Sample)
+    assert events[1].layer == LayerType.Background
     assert events[1].volume == 100
     assert isinstance(events[2], ColourTransformation)
 
