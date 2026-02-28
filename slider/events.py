@@ -284,12 +284,18 @@ class EventCollection:
             
         storyboard_layer_descriptions = {
             0: "(Background)",
-            1: "(Failing)",
-            2: "(Passing)",
+            1: "(Fail)",
+            2: "(Pass)",
             3: "(Foreground)",
             4: "(Overlay)",
         }
         storyboard_layer_mapping = defaultdict(list)
+
+        # These layers are added regardless of if they have events
+        storyboard_layer_mapping[0] = []
+        storyboard_layer_mapping[1] = []
+        storyboard_layer_mapping[2] = []
+        storyboard_layer_mapping[3] = []
 
         for event in storyboard_layers:
             layer_num = int(event.layer)
