@@ -37,6 +37,7 @@ from .curve import Curve
 from .game_mode import GameMode
 from .position import Point, Position, distance
 from .mod import ar_to_ms, circle_radius, ms_300_to_od, ms_to_ar, od_to_ms_300
+from .events import Event, EventType
 from .utils import (
     lazyval,
     memoize,
@@ -2020,6 +2021,8 @@ class Beatmap:
         The timing points the the map.
     hit_objects : list[HitObject]
         The hit objects in the map.
+    events : list[Event]
+        The events in the map.
 
     Notes
     -----
@@ -2062,10 +2065,9 @@ class Beatmap:
         approach_rate: float,
         slider_multiplier: float,
         slider_tick_rate: float,
-        background: str | None,
-        videos: Sequence[str],
         timing_points: Sequence[TimingPoint],
         hit_objects: Sequence[HitObject],
+        events: Sequence[Event]
     ) -> None:
         self.format_version = format_version
         self.audio_filename = audio_filename
@@ -2098,9 +2100,9 @@ class Beatmap:
         self.approach_rate = approach_rate
         self.slider_multiplier = slider_multiplier
         self.slider_tick_rate = slider_tick_rate
-        self.background = background
-        self.videos = list(videos)
         self.timing_points = list(timing_points)
+        self.events = list(events)
+        
         self._hit_objects: List[HitObject] = list(hit_objects)
         # cache hit object stacking at different ar and cs values
         self._hit_objects_with_stacking: Dict[
@@ -2301,6 +2303,21 @@ class Beatmap:
             ar = ms_to_ar(4 * ar_to_ms(ar) / 3)
 
         return ar
+
+    @lazyval
+    def breaks(self):
+        """The breaks of this beatmap."""
+        return [e for e in self.events if e.event_type is EventType.Break]
+
+    @lazyval
+    def backgrounds(self):
+        """The backgrounds of this beatmap."""
+        return [e for e in self.events if e.event_type is EventType.Background]
+
+    @lazyval
+    def videos(self):
+        """The videos of this beatmap."""
+        return [e for e in self.events if e.event_type is EventType.Video]
 
     def hit_objects(
         self,
@@ -2916,6 +2933,10 @@ class Beatmap:
                 parent = timing_point
             timing_points.append(timing_point)
 
+        events = []
+        for raw_event in cast(List[str], groups.get("Events", [])):
+            events.append(Event.parse(raw_event))
+
         slider_multiplier = _get_as_float(
             groups_mapping,
             "Difficulty",
@@ -2928,17 +2949,6 @@ class Beatmap:
             "SliderTickRate",
             default=1.0,  # taken from wiki
         )
-        background = None
-        videos: List[str] = []
-
-        if "Events" in groups:
-            for line in cast(List[str], groups["Events"]):
-                if line.startswith("0") and background is None:
-                    # Only the first background is used
-                    background = line.split('"')[1]
-                elif line.startswith("Video") or line.startswith("1"):
-                    videos.append(line.split('"')[1])
-
         return cls(
             format_version=format_version,
             audio_filename=_get_as_str(groups_mapping, "General", "AudioFilename"),
@@ -3039,8 +3049,6 @@ class Beatmap:
             ),
             slider_multiplier=slider_multiplier,
             slider_tick_rate=slider_tick_rate,
-            background=background,
-            videos=videos,
             timing_points=timing_points,
             hit_objects=list(
                 map(
@@ -3053,6 +3061,7 @@ class Beatmap:
                     cast(List[str], groups["HitObjects"]),
                 )
             ),
+            events=events,
         )
 
     def pack(self):
@@ -3076,10 +3085,32 @@ class Beatmap:
             field, field_value, pack_func, default=no_default, skip_empty=False
         ):
             packed_field_str = pack_func(field, field_value, default=default)
+            
             # if ``skip_empty`` is True, empty string will be
             # returned for empty fields
             if skip_empty and packed_field_str == "":
                 return ""
+            
+            fields_with_spaces = (
+                "DistanceSpacing",
+                "BeatDivisor",
+                "GridSize",
+                "TimelineZoom",
+                "AudioFilename",
+                "AudioLeadIn",
+                "PreviewTime",
+                "Countdown",
+                "SampleSet",
+                "StackLeniency",
+                "Mode",
+                "LetterboxInBreaks",
+                "WidescreenStoryboard",
+            )
+
+            # Some fields have a space between the colon and the value
+            if field in fields_with_spaces:
+                packed_field_str = " " + packed_field_str
+
             return field + ":" + packed_field_str + "\n"
 
         # we'll pin ourselves to file format v14 for packing for now. We'll
@@ -3186,20 +3217,8 @@ class Beatmap:
 
         # pack Events section
         packed_str += "[Events]\n"
-        packed_str += "// Background and Video events\n"
-        if self.background is not None:
-            packed_str += f'0,0,"{self.background}",0,0\n'
-        for video in self.videos:
-            packed_str += f'Video,0,"{video}"\n'
-        packed_str += (
-            "// Break Periods\n"
-            "// Storyboard Layer 0(Background)\n"
-            "// Storyboard Layer 1(Fail)\n"
-            "// Storyboard Layer 2(Pass)\n"
-            "// Storyboard Layer 3(Foreground)\n"
-            "// Storyboard Layer 4(Overlay)\n"
-            "// Storyboard Sound Samples\n"
-        )
+        for event in self.events:
+            packed_str += event.pack() + "\n"
         packed_str += "\n"
 
         # pack TimingPoints section

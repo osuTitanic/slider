@@ -181,9 +181,8 @@ def test_hit_objects_stacking():
         approach_rate=5,
         slider_multiplier=1,
         slider_tick_rate=1,
-        background="",
-        videos=[],
         timing_points=[],
+        events=[],
         hit_objects=hit_objects,
     )
     radius = slider.beatmap.circle_radius(5)
@@ -291,7 +290,7 @@ def test_od(beatmap: slider.Beatmap):
 
 
 def test_background(beatmap: slider.Beatmap):
-    assert beatmap.background == "miiro_no_scenario.png"
+    assert [background.filename for background in beatmap.backgrounds] == ["miiro_no_scenario.png"]
 
 
 def test_video(beatmap: slider.Beatmap):
@@ -341,9 +340,6 @@ def test_pack(beatmap: slider.Beatmap):
         "approach_rate",
         "slider_multiplier",
         "slider_tick_rate",
-        # Event section fields
-        "background",
-        "videos",
     ]
     hitobj_attrs = [
         "position",
@@ -387,6 +383,8 @@ def test_pack(beatmap: slider.Beatmap):
             assert point1 == point2
 
     check_attrs(beatmap, packed, beatmap_attrs)
+    assert [event.pack() for event in beatmap.events] == \
+           [event.pack() for event in packed.events]
 
     # check hit objects
     assert len(beatmap._hit_objects) == len(packed._hit_objects)
