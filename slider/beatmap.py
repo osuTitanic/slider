@@ -37,7 +37,7 @@ from .curve import Curve
 from .game_mode import GameMode
 from .position import Point, Position, distance
 from .mod import ar_to_ms, circle_radius, ms_300_to_od, ms_to_ar, od_to_ms_300
-from .events import Event, EventType, EventCollection
+from .events import Event, EventType, EventCollection, Background, Video, Break
 from .utils import (
     lazyval,
     memoize,
@@ -2310,17 +2310,17 @@ class Beatmap:
         return ar
 
     @lazyval
-    def breaks(self):
+    def breaks(self) -> list[Break]:
         """The breaks of this beatmap."""
         return [e for e in self.events if e.event_type is EventType.Break]
 
     @lazyval
-    def backgrounds(self):
+    def backgrounds(self) -> list[Background]:
         """The backgrounds of this beatmap."""
         return [e for e in self.events if e.event_type is EventType.Background]
 
     @lazyval
-    def videos(self):
+    def videos(self) -> list[Video]:
         """The videos of this beatmap."""
         return [e for e in self.events if e.event_type is EventType.Video]
 
