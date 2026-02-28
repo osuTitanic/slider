@@ -395,8 +395,8 @@ class Background(Event):
             raise ValueError('expected filename parameter for Background')
 
         filename = event_params[0].strip('"')
-        x_offset_int = 0
-        y_offset_int = 0
+        x_offset = "0"
+        y_offset = "0"
 
         if len(event_params) > 1:
             x_offset = event_params[1]
@@ -408,6 +408,9 @@ class Background(Event):
                 "expected no more than 3 params for Background, "
                 f"but got params {event_params}"
             )
+
+        x_offset_int = 0
+        y_offset_int = 0
 
         try:
             x_offset_int = int(x_offset)
@@ -516,8 +519,8 @@ class Video(Event):
             raise ValueError('expected filename parameter for Video')
 
         filename = event_params[0].strip('"')
-        x_offset_int = 0
-        y_offset_int = 0
+        x_offset = "0"
+        y_offset = "0"
 
         if len(event_params) > 1:
             x_offset = event_params[1]
@@ -529,6 +532,9 @@ class Video(Event):
                 "expected no more than 3 params for Video, "
                 f"but got params {event_params}"
             )
+
+        x_offset_int = 0
+        y_offset_int = 0
 
         try:
             x_offset_int = int(x_offset)
