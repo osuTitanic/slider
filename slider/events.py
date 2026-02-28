@@ -160,7 +160,7 @@ class StoryboardObject(Event):
 
     def pack_header(self) -> str:
         return (
-            f'{int(self.event_type)},{int(self.layer)},{self.origin},"{self.filename}",'
+            f'{self.event_type.name},{self.layer.name},{self.origin},"{self.filename}",'
             f'{self.x_offset},{self.y_offset}'
         )
 
@@ -597,7 +597,7 @@ class Animation(StoryboardObject):
 
     def pack_header(self) -> str:
         return (
-            f'{int(self.event_type)},{int(self.layer)},{self.origin},"{self.filename}",'
+            f'{self.event_type.name},{self.layer.name},{self.origin},"{self.filename}",'
             f'{self.x_offset},{self.y_offset},{self.frame_count},'
             f'{self.frame_delay},{self.loop_type}'
         )
