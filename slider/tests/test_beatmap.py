@@ -5,6 +5,7 @@ import pytest
 import slider.beatmap
 import slider.curve
 import slider.example_data.beatmaps
+from slider.events import EventCollection
 from slider.position import Position
 
 
@@ -182,7 +183,7 @@ def test_hit_objects_stacking():
         slider_multiplier=1,
         slider_tick_rate=1,
         timing_points=[],
-        events=[],
+        events=EventCollection([]),
         hit_objects=hit_objects,
     )
     radius = slider.beatmap.circle_radius(5)

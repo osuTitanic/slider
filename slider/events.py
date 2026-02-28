@@ -95,6 +95,36 @@ class Event:
         raise ValueError(f'Unimplemented event type: {event_type}')
 
 
+class EventCollection:
+    def __init__(self, events: list[Event]):
+        self.events = events
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def __len__(self):
+        return len(self.events)
+
+    def __getitem__(self, index):
+        return self.events[index]
+
+    def append(self, event: Event):
+        self.events.append(event)
+
+    def extend(self, events: list[Event]):
+        self.events.extend(events)
+
+    def clear(self):
+        self.events.clear()
+
+    def pack(self) -> str:
+        return '\n'.join(event.pack() for event in self.events)
+
+    @classmethod
+    def parse(cls, event_data: list[str]) -> 'EventCollection':
+        return cls([Event.parse(line) for line in event_data])
+
+
 class GenericEvent(Event):
     """
     A generic event that just stores the raw data, for event types we don't know how to parse.

@@ -37,7 +37,7 @@ from .curve import Curve
 from .game_mode import GameMode
 from .position import Point, Position, distance
 from .mod import ar_to_ms, circle_radius, ms_300_to_od, ms_to_ar, od_to_ms_300
-from .events import Event, EventType
+from .events import Event, EventType, EventCollection
 from .utils import (
     lazyval,
     memoize,
@@ -2067,7 +2067,7 @@ class Beatmap:
         slider_tick_rate: float,
         timing_points: Sequence[TimingPoint],
         hit_objects: Sequence[HitObject],
-        events: Sequence[Event]
+        events: EventCollection
     ) -> None:
         self.format_version = format_version
         self.audio_filename = audio_filename
@@ -2101,7 +2101,7 @@ class Beatmap:
         self.slider_multiplier = slider_multiplier
         self.slider_tick_rate = slider_tick_rate
         self.timing_points = list(timing_points)
-        self.events = list(events)
+        self.events = events
         
         self._hit_objects: List[HitObject] = list(hit_objects)
         # cache hit object stacking at different ar and cs values
@@ -2933,9 +2933,8 @@ class Beatmap:
                 parent = timing_point
             timing_points.append(timing_point)
 
-        events = []
-        for raw_event in cast(List[str], groups.get("Events", [])):
-            events.append(Event.parse(raw_event))
+        event_data = cast(List[str], groups.get("Events", []))
+        events = EventCollection.parse(event_data)
 
         slider_multiplier = _get_as_float(
             groups_mapping,
@@ -3217,8 +3216,7 @@ class Beatmap:
 
         # pack Events section
         packed_str += "[Events]\n"
-        for event in self.events:
-            packed_str += event.pack() + "\n"
+        packed_str += self.events.pack() + "\n"
         packed_str += "\n"
 
         # pack TimingPoints section
