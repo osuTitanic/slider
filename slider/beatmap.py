@@ -2861,7 +2861,10 @@ class Beatmap:
             # some (presmuably manually edited) beatmaps have whitespace at the
             # beginning or end of lines. This can cause logic relying on tokens
             # occurring at specific indices to fail, so we get rid of it.
-            line = line.strip()
+            # storyboards still need the whitespace, so we keep a reference of it
+            raw_line = line.rstrip()
+            line = raw_line.strip()
+
             if not line or line.startswith("//"):
                 # filter out empty lines and comments
                 continue
@@ -2872,7 +2875,10 @@ class Beatmap:
                 commit_group()
                 current_group = line[1:-1]
             else:
-                group_buffer.append(line)
+                if current_group == "Events":
+                    group_buffer.append(raw_line)
+                else:
+                    group_buffer.append(line)
 
         # commit the final group
         commit_group()

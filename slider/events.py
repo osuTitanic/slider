@@ -1,18 +1,16 @@
-
 from datetime import timedelta
 from enum import IntEnum
-
+from typing import Sequence
+from collections import defaultdict
 
 class EventType(IntEnum):
     Background = 0
     Video = 1
     Break = 2
-    Sprite = 3
-    Animation = 4
-
-    # TODO I have absolutely no idea if Sample is really supposed to be 5.
-    # See https://osu.ppy.sh/beatmapsets/14902#osu/54879 for a map with a sample event
+    ColourTransformation = 3
+    Sprite = 4
     Sample = 5
+    Animation = 6
 
     @classmethod
     def _missing_(cls, value):
@@ -20,6 +18,10 @@ class EventType(IntEnum):
             "Background": EventType.Background,
             "Video": EventType.Video,
             "Break": EventType.Break,
+            "Colour": EventType.ColourTransformation,
+            "Color": EventType.ColourTransformation,
+            "ColourTransformation": EventType.ColourTransformation,
+            "ColorTransformation": EventType.ColourTransformation,
             "Sprite": EventType.Sprite,
             "Animation": EventType.Animation,
             "Sample": EventType.Sample,
@@ -28,7 +30,7 @@ class EventType(IntEnum):
 
 class Event:
     """Base class for all storyboard events."""
-    
+
     def __init__(
         self,
         event_type: EventType | None,
@@ -46,14 +48,13 @@ class Event:
     def pack(self) -> str:
         if self.raw_data is not None:
             return self.raw_data
-        
-        # By default, we don't know how to pack an event, so if we don't
-        # have the data to just return, raise an error.
+
         raise NotImplementedError(f"pack is not implemented for {type(self).__name__}")
 
     @classmethod
-    def parse(cls, data) -> 'Event':
-        event_type, start_time_or_layer, *event_params = data.split(',')
+    def parse(cls, data: str) -> 'Event':
+        event_type, *event_params = data.split(',')
+        event_type = event_type.strip()
 
         # Event types are allowed to be specified as either integers or
         # strings. try parsing as an int first, and just leave it alone
@@ -66,33 +67,113 @@ class Event:
         except (ValueError, KeyError):
             return GenericEvent(data)
 
-        storyboard_types = {
-            EventType.Sprite: Sprite,
-            EventType.Animation: Animation,
-            EventType.Sample: Sample,
+        parser = {
+            EventType.Background: Background.parse,
+            EventType.Video: Video.parse,
+            EventType.Break: Break.parse,
+            EventType.ColourTransformation: ColourTransformation.parse,
+            EventType.Sprite: Sprite.parse,
+            EventType.Animation: Animation.parse,
+            EventType.Sample: Sample.parse,
         }
+        return parser[event_type](event_params)
 
-        if event_type in storyboard_types:
-            return storyboard_types[event_type](data)
+
+class StoryboardCommand:
+    BLOCK_COMMANDS = frozenset(
+        {"L", "T"}
+    )
+    COMMAND_TYPES = frozenset(
+        {"F", "M", "MX", "MY", "S", "V", "R", "C", "P", "L", "T"}
+    )
+
+    def __init__(
+        self,
+        command_type: str,
+        parameters: list[str],
+        subcommands: list['StoryboardCommand'] | None = None,
+    ) -> None:
+        self.command_type = command_type
+        self.parameters = parameters
+        self.subcommands = [] if subcommands is None else subcommands
+
+    @property
+    def is_block(self) -> bool:
+        return self.command_type in self.BLOCK_COMMANDS
+
+    def pack(self, indent_level: int = 1) -> str:
+        prefix = " " * indent_level
+        line = prefix + ",".join([self.command_type, *self.parameters])
+        if not self.subcommands:
+            return line
+
+        packed = [line]
+        packed.extend(command.pack(indent_level + 1) for command in self.subcommands)
+        return "\n".join(packed)
+
+    @classmethod
+    def parse_line(cls, data: str) -> tuple['StoryboardCommand', int]:
+        indent_level = len(data) - len(data.lstrip(" "))
+        stripped = data.lstrip(" ")
+        command_type, *parameters = stripped.split(',')
+        return cls(command_type.strip(), parameters), indent_level
+
+
+class StoryboardObject(Event):
+    def __init__(
+        self,
+        event_type: EventType,
+        layer: str,
+        origin: str,
+        filename: str,
+        x_offset: int,
+        y_offset: int,
+        commands: list[StoryboardCommand] | None = None,
+    ) -> None:
+        super().__init__(event_type, 0)
+        self.layer = layer
+        self.origin = origin
+        self.filename = filename
+        self.x_offset = x_offset
+        self.y_offset = y_offset
+        self.commands = commands or []
+
+    def pack_header(self) -> str:
+        return (
+            f'{int(self.event_type)},{self.layer},{self.origin},"{self.filename}",'
+            f'{self.x_offset},{self.y_offset}'
+        )
+
+    def pack_body(self) -> str:
+        return "\n".join(command.pack() for command in self.commands)
+
+    def pack(self) -> str:
+        body = self.pack_body()
+        if not body:
+            return self.pack_header()
+        return f"{self.pack_header()}\n{body}"
+
+    @classmethod
+    def parse_base_fields(cls, event_params: Sequence[str]) -> tuple[str, str, str, int, int]:
+        if len(event_params) < 5:
+            raise ValueError(
+                f'expected at least 5 params for {cls.__name__}, got {event_params}'
+            )
+
+        layer, origin, filename, x_offset, y_offset, *_ = event_params
+        filename = filename.strip('"')
 
         try:
-            start_time = int(start_time_or_layer)
-        except ValueError:
-            raise ValueError(f'Invalid start_time provided, got {start_time_or_layer}')
+            x_offset = int(x_offset)
+        except ValueError as exc:
+            raise ValueError(f'x_offset is invalid, got {x_offset}') from exc
 
-        map_types = {
-            EventType.Background: Background,
-            EventType.Video: Video,
-            EventType.Break: Break,
-        }
+        try:
+            y_offset = int(y_offset)
+        except ValueError as exc:
+            raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
 
-        if event_type in map_types:
-            event = map_types[event_type].parse(start_time, event_params)
-            event.raw_data = data
-            return event
-
-        # Ensure we've handled all event types.
-        raise ValueError(f'Unimplemented event type: {event_type}')
+        return layer, origin, filename, x_offset, y_offset
 
 
 class EventCollection:
@@ -117,6 +198,55 @@ class EventCollection:
     def clear(self):
         self.events.clear()
 
+    @classmethod
+    def parse(cls, event_data: list[str]) -> 'EventCollection':
+        events: list[Event] = []
+        current_storyboard_event: StoryboardObject | None = None
+        command_stacks: dict[int, list[tuple[int, StoryboardCommand]]] = {}
+
+        for line in event_data:
+            if cls.is_storyboard_command(line) and current_storyboard_event is not None:
+                cls.append_storyboard_command(current_storyboard_event, command_stacks, line)
+                continue
+
+            event = Event.parse(line.strip())
+            events.append(event)
+            current_storyboard_event = None
+
+            if isinstance(event, StoryboardObject):
+                current_storyboard_event = event
+
+        return cls(events)
+
+    @staticmethod
+    def is_storyboard_command(data: str) -> bool:
+        stripped = data.lstrip(" ")
+        if not stripped:
+            return False
+
+        command_type = stripped.split(',', 1)[0]
+        return command_type in StoryboardCommand.COMMAND_TYPES
+
+    @staticmethod
+    def append_storyboard_command(
+        storyboard_event: 'StoryboardObject',
+        command_stacks: dict[int, list[tuple[int, StoryboardCommand]]],
+        raw_line: str,
+    ) -> None:
+        command, indent_level = StoryboardCommand.parse_line(raw_line)
+        stack = command_stacks.setdefault(id(storyboard_event), [])
+
+        while stack and indent_level <= stack[-1][0]:
+            stack.pop()
+
+        if stack:
+            stack[-1][1].subcommands.append(command)
+        else:
+            storyboard_event.commands.append(command)
+
+        if command.is_block:
+            stack.append((indent_level, command))
+
     def pack(self) -> str:
         background_and_videos = [
             event for event in self.events
@@ -126,6 +256,10 @@ class EventCollection:
             event for event in self.events
             if event.event_type == EventType.Break
         ]
+        colour_transformations = [
+            event for event in self.events
+            if event.event_type == EventType.ColourTransformation
+        ]
         storyboard_layers = [
             event for event in self.events
             if event.event_type in {EventType.Sprite, EventType.Animation}
@@ -133,6 +267,10 @@ class EventCollection:
         sound_samples = [
             event for event in self.events
             if event.event_type == EventType.Sample
+        ]
+        unknown_events = [
+            event for event in self.events
+            if event.event_type is None
         ]
 
         packed_str = ""
@@ -143,25 +281,39 @@ class EventCollection:
         packed_str += "//Break Periods\n"
         for event in break_periods:
             packed_str += event.pack() + "\n"
+            
+        storyboard_layer_descriptions = {
+            0: "(Background)",
+            1: "(Failing)",
+            2: "(Passing)",
+            3: "(Foreground)",
+            4: "(Overlay)",
+        }
+        storyboard_layer_mapping = defaultdict(list)
 
-        packed_str += (
-            "//Storyboard Layer 0 (Background)\n"
-            "//Storyboard Layer 1 (Fail)\n"
-            "//Storyboard Layer 2 (Pass)\n"
-            "//Storyboard Layer 3 (Foreground)\n"
-        )
         for event in storyboard_layers:
-            packed_str += event.pack() + "\n"
+            layer_num = int(event.layer)
+            storyboard_layer_mapping[layer_num].append(event)
+
+        for layer, events in sorted(storyboard_layer_mapping.items()):
+            layer_description = storyboard_layer_descriptions.get(layer, "")
+            packed_str += f"//Storyboard Layer {layer} {layer_description}\n"
+
+            for event in events:
+                packed_str += event.pack() + "\n"
 
         packed_str += "//Storyboard Sound Samples\n"
         for event in sound_samples:
             packed_str += event.pack() + "\n"
 
-        return packed_str.strip()
+        packed_str += "//Background Colour Transformations\n"
+        for event in colour_transformations:
+            packed_str += event.pack() + "\n"
 
-    @classmethod
-    def parse(cls, event_data: list[str]) -> 'EventCollection':
-        return cls([Event.parse(line) for line in event_data])
+        for event in unknown_events:
+            packed_str += event.pack() + "\n"
+
+        return packed_str.strip()
 
 
 class GenericEvent(Event):
@@ -187,19 +339,29 @@ class Background(Event):
         )
 
     @classmethod
-    def parse(cls, start_time: int, event_params: list[str]) -> 'Background':
-        if len(event_params) == 0:
+    def parse(cls, event_params: list[str]) -> 'Background':
+        if not event_params:
+            raise ValueError('expected start_time parameter for Background')
+
+        start_time = event_params[0]
+        try:
+            start_time_int = int(start_time)
+        except ValueError as exc:
+            raise ValueError(f'Invalid start_time provided, got {start_time}') from exc
+
+        event_params = event_params[1:]
+        if not event_params:
             raise ValueError('expected filename parameter for Background')
 
         filename = event_params[0].strip('"')
-        x_offset = 0
-        y_offset = 0
+        x_offset_int = 0
+        y_offset_int = 0
 
-        # x_offset and y_offset are optional, default to 0
         if len(event_params) > 1:
             x_offset = event_params[1]
         if len(event_params) > 2:
             y_offset = event_params[2]
+
         if len(event_params) > 3:
             raise ValueError(
                 "expected no more than 3 params for Background, "
@@ -207,16 +369,18 @@ class Background(Event):
             )
 
         try:
-            x_offset = int(x_offset)
-        except ValueError:
-            raise ValueError(f'x_offset is invalid, got {x_offset}')
+            x_offset_int = int(x_offset)
+        except ValueError as exc:
+            raise ValueError(f'x_offset is invalid, got {x_offset}') from exc
 
         try:
-            y_offset = int(y_offset)
-        except ValueError:
-            raise ValueError(f'y_offset is invalid, got {y_offset}')
+            y_offset_int = int(y_offset)
+        except ValueError as exc:
+            raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
 
-        return cls(filename, x_offset, y_offset)
+        event = cls(filename, x_offset_int, y_offset_int)
+        event.start_time = timedelta(milliseconds=start_time_int)
+        return event
 
 
 class Break(Event):
@@ -231,16 +395,55 @@ class Break(Event):
         )
 
     @classmethod
-    def parse(cls, start_time: int, event_params: list[str]) -> 'Break':
-        if not event_params:
-            raise ValueError('expected end_time paramter for Break')
+    def parse(cls, event_params: list[str]) -> 'Break':
+        if len(event_params) < 2:
+            raise ValueError('expected start_time and end_time parameters for Break')
+
+        start_time = event_params[0]
+        end_time = event_params[1]
 
         try:
-            end_time = int(event_params[0])
-        except ValueError:
-            raise ValueError(f'Invalid end_time provided, got {end_time}')
+            start_time_int = int(start_time)
+        except ValueError as exc:
+            raise ValueError(f'Invalid start_time provided, got {start_time}') from exc
 
-        return cls(start_time, end_time)
+        try:
+            end_time_int = int(end_time)
+        except ValueError as exc:
+            raise ValueError(f'Invalid end_time provided, got {end_time}') from exc
+
+        return cls(start_time_int, end_time_int)
+
+
+class ColourTransformation(Event):
+    def __init__(self, start_time: int, red: int, green: int, blue: int) -> None:
+        super().__init__(EventType.ColourTransformation, start_time)
+        self.red = red
+        self.green = green
+        self.blue = blue
+
+    def pack(self) -> str:
+        return (
+            f'3,{self.delta_to_ms(self.start_time)},'
+            f'{self.red},{self.green},{self.blue}'
+        )
+
+    @classmethod
+    def parse(cls, event_params: list[str]) -> 'ColourTransformation':
+        if len(event_params) < 4:
+            raise ValueError(
+                'expected start_time, red, green and blue parameters '
+                'for ColourTransformation'
+            )
+
+        start_time, red, green, blue = event_params[:4]
+        try:
+            return cls(int(start_time), int(red), int(green), int(blue))
+        except ValueError as exc:
+            raise ValueError(
+                'ColourTransformation parameters must be integers, got '
+                f'{event_params[:4]}'
+            ) from exc
 
 
 class Video(Event):
@@ -257,19 +460,29 @@ class Video(Event):
         )
 
     @classmethod
-    def parse(cls, start_time: int, event_params: list[str]) -> 'Video':
-        if len(event_params) == 0:
+    def parse(cls, event_params: list[str]) -> 'Video':
+        if not event_params:
+            raise ValueError('expected start_time parameter for Video')
+
+        try:
+            start_time = event_params[0]
+            start_time_int = int(start_time)
+        except ValueError as exc:
+            raise ValueError(f'Invalid start_time provided, got {start_time}') from exc
+
+        event_params = event_params[1:]
+        if not event_params:
             raise ValueError('expected filename parameter for Video')
 
         filename = event_params[0].strip('"')
-        x_offset = 0
-        y_offset = 0
+        x_offset_int = 0
+        y_offset_int = 0
 
-        # x_offset and y_offset are optional, default to 0
         if len(event_params) > 1:
             x_offset = event_params[1]
         if len(event_params) > 2:
             y_offset = event_params[2]
+
         if len(event_params) > 3:
             raise ValueError(
                 "expected no more than 3 params for Video, "
@@ -277,30 +490,153 @@ class Video(Event):
             )
 
         try:
-            x_offset = int(x_offset)
-        except ValueError:
-            raise ValueError(f'x_offset is invalid, got {x_offset}')
+            x_offset_int = int(x_offset)
+        except ValueError as exc:
+            raise ValueError(f'x_offset is invalid, got {x_offset}') from exc
 
         try:
-            y_offset = int(y_offset)
-        except ValueError:
-            raise ValueError(f'y_offset is invalid, got {y_offset}')
+            y_offset_int = int(y_offset)
+        except ValueError as exc:
+            raise ValueError(f'y_offset is invalid, got {y_offset}') from exc
 
-        return cls(start_time, filename, x_offset, y_offset)
-
-
-# TODO Implement storyboard event parsing & packing
-
-class Sprite(GenericEvent):
-    def __init__(self, raw_data: str) -> None:
-        super().__init__(raw_data, EventType.Sprite)
+        return cls(start_time_int, filename, x_offset_int, y_offset_int)
 
 
-class Animation(GenericEvent):
-    def __init__(self, raw_data: str) -> None:
-        super().__init__(raw_data, EventType.Animation)
+class Sprite(StoryboardObject):
+    def __init__(
+        self,
+        layer: str,
+        origin: str,
+        filename: str,
+        x_offset: int,
+        y_offset: int,
+        commands: list[StoryboardCommand] | None = None,
+    ) -> None:
+        super().__init__(
+            EventType.Sprite,
+            layer,
+            origin,
+            filename,
+            x_offset,
+            y_offset,
+            commands,
+        )
+
+    @classmethod
+    def parse(cls, event_params: list[str]) -> 'Sprite':
+        layer, origin, filename, x_offset, y_offset = cls.parse_base_fields(event_params)
+        return cls(layer, origin, filename, x_offset, y_offset)
 
 
-class Sample(GenericEvent):
-    def __init__(self, raw_data: str) -> None:
-        super().__init__(raw_data, EventType.Sample)
+class Animation(StoryboardObject):
+    def __init__(
+        self,
+        layer: str,
+        origin: str,
+        filename: str,
+        x_offset: int,
+        y_offset: int,
+        frame_count: int,
+        frame_delay: int,
+        loop_type: str = 'LoopForever',
+        commands: list[StoryboardCommand] | None = None,
+    ) -> None:
+        super().__init__(
+            EventType.Animation,
+            layer,
+            origin,
+            filename,
+            x_offset,
+            y_offset,
+            commands,
+        )
+        self.frame_count = frame_count
+        self.frame_delay = frame_delay
+        self.loop_type = loop_type
+
+    def pack_header(self) -> str:
+        return (
+            f'{int(self.event_type)},{self.layer},{self.origin},"{self.filename}",'
+            f'{self.x_offset},{self.y_offset},{self.frame_count},'
+            f'{self.frame_delay},{self.loop_type}'
+        )
+
+    @classmethod
+    def parse(cls, event_params: list[str]) -> 'Animation':
+        layer, origin, filename, x_offset, y_offset = cls.parse_base_fields(event_params)
+        if len(event_params) < 7:
+            raise ValueError(
+                'expected at least 7 params for Animation '
+                '(layer, origin, filename, x, y, frame_count, frame_delay)'
+            )
+
+        frame_count = event_params[5]
+        frame_delay = event_params[6]
+        loop_type = event_params[7] if len(event_params) > 7 else 'LoopForever'
+
+        try:
+            frame_count_int = int(frame_count)
+        except ValueError as exc:
+            raise ValueError(f'frame_count is invalid, got {frame_count}') from exc
+
+        try:
+            frame_delay_int = int(frame_delay)
+        except ValueError as exc:
+            raise ValueError(f'frame_delay is invalid, got {frame_delay}') from exc
+
+        return cls(
+            layer,
+            origin,
+            filename,
+            x_offset,
+            y_offset,
+            frame_count_int,
+            frame_delay_int,
+            loop_type,
+        )
+
+
+class Sample(Event):
+    def __init__(
+        self,
+        start_time: int,
+        layer: str,
+        filename: str,
+        volume: int = 100,
+    ) -> None:
+        super().__init__(EventType.Sample, start_time)
+        self.layer = layer
+        self.filename = filename
+        self.volume = volume
+
+    def pack(self) -> str:
+        return (
+            f'5,{self.delta_to_ms(self.start_time)},'
+            f'{self.layer},"{self.filename}",{self.volume}'
+        )
+
+    @classmethod
+    def parse(cls, event_params: list[str]) -> 'Sample':
+        if len(event_params) < 3:
+            raise ValueError(
+                'expected start_time, layer, and filename parameters for Sample'
+            )
+
+        start_time, layer, filename, *rest = event_params
+        filename = filename.strip('"')
+
+        try:
+            start_time_int = int(start_time)
+        except ValueError as exc:
+            raise ValueError(f'Invalid start_time provided, got {start_time}') from exc
+
+        volume_int = 100
+
+        if rest:
+            try:
+                volume = rest[0]
+                volume_int = int(volume)
+            except ValueError as exc:
+                raise ValueError(f'Invalid volume provided, got {volume}') from exc
+
+        return cls(start_time_int, layer, filename, volume_int)
