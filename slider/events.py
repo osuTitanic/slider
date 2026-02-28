@@ -281,7 +281,7 @@ class EventCollection:
         packed_str += "//Break Periods\n"
         for event in break_periods:
             packed_str += event.pack() + "\n"
-            
+
         storyboard_layer_descriptions = {
             0: "(Background)",
             1: "(Fail)",
@@ -312,7 +312,9 @@ class EventCollection:
         for event in sound_samples:
             packed_str += event.pack() + "\n"
 
-        packed_str += "//Background Colour Transformations\n"
+        if colour_transformations:
+            # This comment only seems to be added if there are transformations present
+            packed_str += "//Background Colour Transformations\n"
         for event in colour_transformations:
             packed_str += event.pack() + "\n"
 
